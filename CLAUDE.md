@@ -43,8 +43,19 @@ make clean                  # Clean build artifacts
 - **src/bigquery_mcp/bigquery_tools.py**: Core MCP tool implementations
 - **src/bigquery_mcp/auth.py**: Authentication helpers and error formatting
 - **src/bigquery_mcp/query_safety.py**: SQL query validation and safety checks
+- **src/bigquery_mcp/worker.py / worker_ops.py**: stdio worker implementing the
+  language-neutral worker contract (reuses `bigquery_tools`)
 - FastMCP decorators for clean tool definitions
 - Async operations for BigQuery interactions
+
+### Node Control Plane & Worker Broker
+The `node/` directory is a separate npm package (`bigquery-mcp-node`): a
+Node/TypeScript MCP control plane that delegates BigQuery access to a worker via
+a broker (Python-first, Node fallback). The Python and Node packages are managed
+independently but share one NDJSON-over-stdio contract. See **ARCHITECTURE.md**
+for the full design. When changing tool behaviour, keep the Python worker
+(`worker_ops.py`) and the Node worker (`node/src/workers/node/main.ts`) in parity,
+and update the contract in `node/src/types/worker.ts`.
 
 ### Tool Implementation Pattern
 ```python

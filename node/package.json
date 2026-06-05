@@ -1,0 +1,35 @@
+{
+  "name": "bigquery-mcp-node",
+  "version": "0.1.0",
+  "description": "Node/TypeScript MCP control plane for BigQuery with a pluggable worker broker (Python-first, Node fallback).",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "bigquery-mcp-node": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist",
+    "start": "node dist/index.js",
+    "worker": "node dist/workers/node/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test dist/test/*.test.js",
+    "prepublishOnly": "npm run clean && npm run build"
+  },
+  "dependencies": {
+    "@google-cloud/bigquery": "^7.9.1",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3"
+  }
+}

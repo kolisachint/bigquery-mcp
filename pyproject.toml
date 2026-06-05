@@ -27,6 +27,7 @@ dependencies = [
 
 [project.scripts]
 bigquery-mcp = "bigquery_mcp.server:main"
+bigquery-mcp-worker = "bigquery_mcp.worker:main"
 
 [project.urls]
 Homepage = "https://pvoo.github.io/bigquery-mcp/"
@@ -115,6 +116,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101", "S603", "S110", "TRY003"]
+# The worker translates failures into descriptive, user-facing wire errors;
+# dynamic messages on WorkerError are intentional here.
+"src/bigquery_mcp/worker_ops.py" = ["TRY003"]
 
 [tool.ruff.format]
 preview = true
