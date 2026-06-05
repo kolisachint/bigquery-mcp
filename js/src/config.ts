@@ -1,8 +1,8 @@
 /**
- * Configuration loading for the MCP control plane.
+ * Configuration loading for the BigQuery MCP server.
  *
  * Priority: CLI args > environment variables > defaults. Defaults mirror the
- * Python implementation so behaviour is identical regardless of worker.
+ * Python server so behaviour is identical across the two implementations.
  */
 
 export interface Config {
@@ -10,8 +10,6 @@ export interface Config {
   location: string;
   keyFile?: string;
   allowedDatasets?: string[];
-  /** Forced worker selection, if any. */
-  worker?: "python" | "node";
 
   listMaxResults: number;
   listMaxResultsDetailed: number;
@@ -64,7 +62,6 @@ export interface CliOverrides {
   location?: string;
   keyFile?: string;
   allowedDatasets?: string[];
-  worker?: "python" | "node";
 }
 
 export function loadConfig(overrides: CliOverrides = {}): Config {
@@ -76,17 +73,11 @@ export function loadConfig(overrides: CliOverrides = {}): Config {
     ? distanceRaw
     : DEFAULTS.distanceType) as Config["distanceType"];
 
-  const workerEnv = process.env.BIGQUERY_MCP_WORKER?.toLowerCase();
-  const worker =
-    overrides.worker ??
-    (workerEnv === "python" || workerEnv === "node" ? workerEnv : undefined);
-
   return {
     projectId,
     location,
     keyFile: overrides.keyFile ?? process.env.GOOGLE_APPLICATION_CREDENTIALS,
     allowedDatasets: overrides.allowedDatasets ?? listEnv("BIGQUERY_ALLOWED_DATASETS"),
-    worker,
 
     listMaxResults: intEnv("BIGQUERY_LIST_MAX_RESULTS", DEFAULTS.listMaxResults),
     listMaxResultsDetailed: intEnv(
@@ -108,29 +99,4 @@ export function loadConfig(overrides: CliOverrides = {}): Config {
     embeddingTables: listEnv("BIGQUERY_EMBEDDING_TABLES"),
     distanceType,
   };
-}
-
-/**
- * Build the environment a worker subprocess should inherit. We forward the
- * resolved configuration as the same env vars the Python/Node workers read,
- * so CLI overrides reliably reach whichever worker is spawned.
- */
-export function workerEnv(config: Config): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  env.GCP_PROJECT_ID = config.projectId;
-  env.BIGQUERY_LOCATION = config.location;
-  if (config.keyFile) env.GOOGLE_APPLICATION_CREDENTIALS = config.keyFile;
-  if (config.allowedDatasets) env.BIGQUERY_ALLOWED_DATASETS = config.allowedDatasets.join(",");
-  env.BIGQUERY_LIST_MAX_RESULTS = String(config.listMaxResults);
-  env.BIGQUERY_LIST_MAX_RESULTS_DETAILED = String(config.listMaxResultsDetailed);
-  env.BIGQUERY_SAMPLE_ROWS = String(config.sampleRows);
-  env.BIGQUERY_SAMPLE_ROWS_FOR_STATS = String(config.sampleRowsForStats);
-  env.BIGQUERY_MAX_RECOMMENDED_RESULTS = String(config.maxRecommendedResults);
-  env.BIGQUERY_MAX_BYTES_BILLED = String(config.maxBytesBilled);
-  env.BIGQUERY_VECTOR_SEARCH_ENABLED = String(config.vectorSearchEnabled);
-  if (config.embeddingModel) env.BIGQUERY_EMBEDDING_MODEL = config.embeddingModel;
-  env.BIGQUERY_EMBEDDING_COLUMN_CONTAINS = config.embeddingColumnContains;
-  if (config.embeddingTables) env.BIGQUERY_EMBEDDING_TABLES = config.embeddingTables.join(",");
-  env.BIGQUERY_DISTANCE_TYPE = config.distanceType;
-  return env;
 }

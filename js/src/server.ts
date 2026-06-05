@@ -1,16 +1,16 @@
 /**
- * BigQuery MCP control plane (Node/TypeScript).
+ * BigQuery MCP server (Node/TypeScript) — standalone.
  *
- * Owns the MCP lifecycle and transport, validation, policy and worker
- * discovery. All BigQuery access is delegated to a worker (Python-first, Node
- * fallback) via the broker, so the MCP surface stays stable regardless of which
- * runtime is available.
+ * Owns the MCP lifecycle/transport and talks to BigQuery directly via
+ * BigQueryService. Its tool surface is generated from the shared contract
+ * (contract/tools.json), which is also what the Python server implements.
  */
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { WorkerBroker } from "./broker/workerBroker.js";
+import { BigQueryService } from "./bigquery.js";
 import type { Config } from "./config.js";
+import { contractVersion } from "./contract.js";
 import { registerTools } from "./tools/register.js";
 
 export async function runServer(config: Config): Promise<void> {
@@ -25,22 +25,21 @@ export async function runServer(config: Config): Promise<void> {
     );
   }
 
-  const broker = new WorkerBroker(config);
-  const selected = await broker.start();
+  const service = new BigQueryService(config);
+
+  // Validate credentials up front so failures surface clearly at startup.
+  try {
+    await service.validateAccess();
+  } catch (err) {
+    throw new Error(`BigQuery authentication failed: ${(err as Error).message}`);
+  }
   process.stderr.write(
-    `🔌 BigQuery MCP control plane ready (worker: ${selected}, project: ${config.projectId}, location: ${config.location})\n`,
+    `🔌 BigQuery MCP server ready (project: ${config.projectId}, location: ${config.location}, contract v${contractVersion})\n`,
   );
 
   const server = new McpServer({ name: "bigquery-mcp", version: "0.1.0" });
-  registerTools(server, broker, config);
+  registerTools(server, service, config);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-
-  const shutdown = (): void => {
-    broker.stop();
-    process.exit(0);
-  };
-  process.on("SIGINT", shutdown);
-  process.on("SIGTERM", shutdown);
 }

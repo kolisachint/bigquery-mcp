@@ -1,0 +1,284 @@
+{
+  "$schema": "./contract.schema.json",
+  "contractVersion": "1.0.0",
+  "description": "Single source of truth for the BigQuery MCP tool surface, shared by the Python server (bigquery-mcp) and the JS server (bigquery-mcp-js). Both servers MUST expose exactly these tools with these input schemas and produce outputs matching these output schemas. Edit this file to add or change a tool, then implement the handler on each side.",
+  "envelope": {
+    "description": "Every tool returns a JSON object. On success: `success: true`, `data`, plus the tool-specific meta fields described in each tool's `output`. On failure: `success: false` with `error` and `error_type`.",
+    "error": {
+      "type": "object",
+      "required": ["success", "error", "error_type"],
+      "properties": {
+        "success": { "const": false },
+        "error": { "type": "string" },
+        "error_type": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "tools": [
+    {
+      "name": "run_query",
+      "summary": "Execute read-only BigQuery SQL queries with safety validation. Use LIMIT in your query to control result size (recommended: start with LIMIT 20). For semantic search, consider using the vector_search tool or write custom VECTOR_SEARCH queries.",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["query"],
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "BigQuery SQL SELECT query to execute (only read-only queries allowed). Use LIMIT clause to control result size."
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["success", "data", "total_count", "bytes_processed", "max_bytes_billed"],
+        "properties": {
+          "success": { "const": true },
+          "data": { "type": "array", "items": { "type": "object" } },
+          "total_count": { "type": "integer" },
+          "total_rows_in_result": { "type": "integer" },
+          "bytes_processed": { "type": ["integer", "null"] },
+          "max_bytes_billed": { "type": "integer" }
+        }
+      }
+    },
+    {
+      "name": "dry_run_query",
+      "summary": "Estimate the bytes a BigQuery SQL query would scan without executing it. Useful for cost checks before running expensive queries.",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["query"],
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "BigQuery SQL SELECT query to dry-run (only read-only queries allowed)."
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["success", "data", "total_bytes_processed", "max_bytes_billed"],
+        "properties": {
+          "success": { "const": true },
+          "data": {
+            "type": "object",
+            "required": ["total_bytes_processed"],
+            "properties": { "total_bytes_processed": { "type": ["integer", "null"] } }
+          },
+          "total_bytes_processed": { "type": ["integer", "null"] },
+          "max_bytes_billed": { "type": "integer" }
+        }
+      }
+    },
+    {
+      "name": "list_datasets_in_project",
+      "summary": "List all datasets in BigQuery project with optional search and detailed information",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "search": {
+            "type": "string",
+            "default": "",
+            "description": "Filter datasets by name (case-insensitive)"
+          },
+          "detailed": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include descriptions and table counts for each dataset"
+          },
+          "max_results": {
+            "type": ["integer", "null"],
+            "default": null,
+            "description": "(OPTIONAL INTEGER) Maximum number of datasets to return"
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["success", "data", "total_available", "total_matching", "returned_count"],
+        "properties": {
+          "success": { "const": true },
+          "data": {
+            "type": "array",
+            "description": "Array of dataset id strings (basic) or dataset objects (detailed)."
+          },
+          "total_available": { "type": "integer" },
+          "total_matching": { "type": "integer" },
+          "returned_count": { "type": "integer" }
+        }
+      }
+    },
+    {
+      "name": "list_tables_in_dataset",
+      "summary": "List tables in dataset with optional search, detailed information, and dataset context",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["dataset_id"],
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "description": "Dataset ID to list tables from"
+          },
+          "search": {
+            "type": "string",
+            "default": "",
+            "description": "Filter tables by name (case-insensitive)"
+          },
+          "detailed": {
+            "type": "boolean",
+            "default": false,
+            "description": "Include table metadata like row count and size"
+          },
+          "max_results": {
+            "type": ["integer", "null"],
+            "default": null,
+            "description": "(OPTIONAL INTEGER) Maximum number of tables to return"
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": [
+          "success",
+          "data",
+          "total_available",
+          "total_matching",
+          "returned_count",
+          "dataset_context"
+        ],
+        "properties": {
+          "success": { "const": true },
+          "data": {
+            "type": "array",
+            "description": "Array of table id strings (basic) or table objects (detailed)."
+          },
+          "total_available": { "type": "integer" },
+          "total_matching": { "type": "integer" },
+          "returned_count": { "type": "integer" },
+          "dataset_context": {
+            "type": "object",
+            "required": ["dataset_id", "total_table_count"],
+            "properties": {
+              "dataset_id": { "type": "string" },
+              "description": { "type": ["string", "null"] },
+              "location": { "type": ["string", "null"] },
+              "total_table_count": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "get_table",
+      "summary": "Get detailed table information with schema and column fill rate analysis",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["dataset_id", "table_id"],
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "description": "Dataset ID containing the table"
+          },
+          "table_id": {
+            "type": "string",
+            "description": "Table ID to get detailed information for"
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "const": true },
+          "data": {
+            "type": "object",
+            "required": ["table_path", "type", "schema_with_fill_rates", "sample_data"],
+            "properties": {
+              "table_path": { "type": "string" },
+              "type": { "type": "string" },
+              "description": { "type": ["string", "null"] },
+              "total_row_count": { "type": ["integer", "null"] },
+              "size_bytes": { "type": ["integer", "null"] },
+              "created": { "type": ["string", "null"] },
+              "modified": { "type": ["string", "null"] },
+              "partition_details": { "type": ["object", "null"] },
+              "primary_key_columns": { "type": ["array", "null"], "items": { "type": "string" } },
+              "schema_with_fill_rates": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "type", "fill_rate_percent"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "type": { "type": "string" },
+                    "mode": { "type": ["string", "null"] },
+                    "description": { "type": ["string", "null"] },
+                    "fill_rate_percent": { "type": "number" }
+                  }
+                }
+              },
+              "fill_rate_sample_size": { "type": "integer" },
+              "sample_data": { "type": "array", "items": { "type": "object" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "vector_search",
+      "summary": "Vector search: discover embedding tables (no query_text) or perform semantic search (with query_text). Configure BIGQUERY_EMBEDDING_MODEL env var for search mode.",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "query_text": {
+            "type": "string",
+            "default": "",
+            "description": "Text to search for semantically. Leave empty to discover embedding tables."
+          },
+          "table_path": {
+            "type": "string",
+            "default": "",
+            "description": "Table path as 'dataset.table'. Required for search mode."
+          },
+          "top_k": {
+            "type": "string",
+            "default": "10",
+            "description": "Number of results to return (1-1000)."
+          },
+          "select_columns": {
+            "type": "string",
+            "default": "",
+            "description": "Comma-separated columns to return, or empty for all."
+          },
+          "embedding_column": {
+            "type": "string",
+            "default": "embedding",
+            "description": "Name of the embedding column."
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["success", "data", "mode"],
+        "properties": {
+          "success": { "const": true },
+          "data": { "type": "array" },
+          "mode": { "type": "string", "enum": ["discovery", "search"] },
+          "total_count": { "type": "integer" }
+        }
+      }
+    }
+  ]
+}

@@ -8,7 +8,7 @@
 import { type CliOverrides, loadConfig } from "./config.js";
 import { runServer } from "./server.js";
 
-const HELP = `bigquery-mcp-js - Node MCP control plane for BigQuery
+const HELP = `bigquery-mcp-js - standalone BigQuery MCP server (Node/TypeScript)
 
 Usage:
   bigquery-mcp-js [options]
@@ -18,14 +18,11 @@ Options:
   --location <loc>        BigQuery location, e.g. US, EU (overrides BIGQUERY_LOCATION)
   --key-file <path>       Service account JSON key (overrides GOOGLE_APPLICATION_CREDENTIALS)
   --datasets <a,b,c>      Restrict access to specific datasets (comma-separated)
-  --worker <python|node>  Force a worker; default prefers python then falls back to node
-                          (overrides BIGQUERY_MCP_WORKER)
   -h, --help              Show this help
 
-Worker selection:
-  By default the broker prefers the Python worker (if python3 and a healthy
-  worker are available) and otherwise uses the bundled Node worker. Both
-  implement the same contract, so tool behaviour is identical.
+This is the standalone JS BigQuery MCP server. The Python server
+(bigquery-mcp) is a separate, independent package; both implement the same
+tool contract (contract/tools.json).
 `;
 
 function parseArgs(argv: string[]): CliOverrides | "help" {
@@ -56,14 +53,6 @@ function parseArgs(argv: string[]): CliOverrides | "help" {
           .map((s) => s.trim())
           .filter(Boolean);
         break;
-      case "--worker": {
-        const value = next().toLowerCase();
-        if (value !== "python" && value !== "node") {
-          throw new Error(`--worker must be 'python' or 'node', got '${value}'`);
-        }
-        overrides.worker = value;
-        break;
-      }
       default:
         throw new Error(`Unknown argument: ${arg}`);
     }

@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { test } from "bun:test";
-import { checkEstimatedBytes } from "../policy/costPolicy.js";
 import { isQuerySafe } from "../policy/sqlSafety.js";
 
 test("allows simple SELECT", () => {
@@ -36,18 +35,4 @@ test("rejects multiple statements", () => {
 
 test("allows a single trailing semicolon", () => {
   assert.equal(isQuerySafe("SELECT 1;").safe, true);
-});
-
-test("cost policy rejects over-budget estimate", () => {
-  const d = checkEstimatedBytes(2_000, 1_000);
-  assert.equal(d.allowed, false);
-  assert.match(d.message ?? "", /exceeds the configured/);
-});
-
-test("cost policy allows under-budget estimate", () => {
-  assert.equal(checkEstimatedBytes(500, 1_000).allowed, true);
-});
-
-test("cost policy defers when estimate is unknown", () => {
-  assert.equal(checkEstimatedBytes(Number.NaN, 1_000).allowed, true);
 });

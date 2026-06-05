@@ -1,87 +1,90 @@
-# Architecture: Node control plane + pluggable worker broker
+# Architecture: two independent servers, one shared contract
 
-This repository ships **two separately-managed packages** that share one
-language-neutral worker contract:
+This repository ships **two independent MCP servers** that talk to BigQuery
+directly. They do not call each other and there is no broker or worker layer.
+What keeps them from drifting is a single shared **tool contract**.
 
-| Package | Lang | Distribution | Role |
+| Package | Lang | Distribution | Entry |
 |---|---|---|---|
-| `bigquery-mcp` (root, `src/bigquery_mcp/`) | Python | pip / PyPI | FastMCP server **and** the preferred stdio worker (`bigquery-mcp-worker`) |
-| `bigquery-mcp-js` (`js/`) | TypeScript | npm (built with Bun) | MCP control plane + worker broker + bundled Node fallback worker |
+| `bigquery-mcp` (root, `src/bigquery_mcp/`) | Python | pip / PyPI | `bigquery-mcp` (FastMCP, stdio) |
+| `bigquery-mcp-js` (`js/`) | TypeScript | npm (built with Bun) | `bigquery-mcp-js` (MCP SDK, stdio) |
 
 ```
-                    ┌─────────────────────────────────────────────┐
-   MCP host  ⇄ stdio │  bigquery-mcp-js (control plane)             │
-                     │   • tool schemas, validation                │
-                     │   • SQL safety + dry-run cost policy         │
-                     │   • worker broker (discovery + fallback)     │
-                     └───────────────┬─────────────────────────────┘
-                                     │ newline-delimited JSON over stdio
-                     ┌───────────────┴───────────────┐
-                     ▼                                ▼
-          Python worker (preferred)         Node worker (fallback)
-          bigquery_mcp.worker               js/.../workers/node/main.ts
-                     │                                │
-                     └──────────── BigQuery SDK ──────┘
-                       (google-cloud-bigquery)  (@google-cloud/bigquery)
+        ┌─────────────────────────────┐        ┌─────────────────────────────┐
+MCP host│  bigquery-mcp  (Python)     │   OR   │  bigquery-mcp-js  (Node)    │
+  ⇄stdio│  FastMCP + bigquery_tools   │        │  MCP SDK + BigQueryService  │
+        └──────────────┬──────────────┘        └──────────────┬──────────────┘
+                       │ google-cloud-bigquery                │ @google-cloud/bigquery
+                       └──────────────┬───────────────────────┘
+                                      ▼
+                                  BigQuery
+
+                 both implement ─►  contract/tools.json  ◄─ single source of truth
 ```
 
-## Design rationale
+Pick whichever server fits your runtime. They expose the same tools with the
+same inputs and outputs.
 
-- **MCP stays in Node, execution is swappable.** The MCP lifecycle/transport is
-  the stable, host-facing surface; the worker is an implementation detail the
-  broker picks per runtime availability. We deliberately do **not** make the MCP
-  host switch languages.
-- **Python preferred, Node fallback.** Python gives headroom for richer query
-  analysis/post-processing and reuses the mature `bigquery_tools` logic. Node
-  keeps install friction low and works with only npm present.
-- **One contract, two implementations.** Both workers implement the same ops, so
-  tool output is identical regardless of which one handles a request.
+## The shared contract
 
-## Worker selection
+`contract/tools.json` is the **single source of truth** for the tool surface:
+each tool's `name`, `summary` (description), `input` JSON Schema, and `output`
+JSON Schema. See `contract/README.md`.
 
-1. Explicit override: `BIGQUERY_MCP_WORKER=python|node` (or `--worker`).
-2. Otherwise prefer Python: spawn it and run a `health` check.
-3. Otherwise fall back to the bundled Node worker.
+- **JS is generated from the contract.** `js/src/tools/register.ts` iterates the
+  contract, builds each tool's input validation (zod) from its `input` schema,
+  and wires it to the handler in `js/src/tools/handlers.ts`. Descriptions come
+  straight from the contract.
+- **Python is checked against the contract.** `src/bigquery_mcp/bigquery_tools.py`
+  reads tool descriptions from the contract, and `tests/test_contract.py` asserts
+  that the registered tools (names, descriptions, input parameter names/types/
+  required-ness/descriptions) match it.
+- **Outputs are validated both sides.** `tests/test_contract.py` (Python,
+  `jsonschema`) and `js/src/test/contract.test.ts` (JS, `ajv`) run each tool
+  against a mocked BigQuery client and validate the result against the contract's
+  `output` schema.
 
-A worker that fails to start (e.g. missing credentials) fails its health check,
-and the broker moves on — the control plane still starts.
+### Adding or changing a tool
 
-## Safety & cost path (`run_query`)
+1. Edit `contract/tools.json` (name, `summary`, `input`, `output`).
+2. JS: add a handler in `js/src/tools/handlers.ts` (registration + validation are
+   generated from the contract).
+3. Python: add the tool in `src/bigquery_mcp/bigquery_tools.py`, reading its
+   description from `contract.description("<name>")`.
+4. Run both suites — the conformance/output tests fail if either side diverges.
 
-1. Reject non-`SELECT`/`WITH` (shared `sqlSafety`, ported from `query_safety.py`).
-2. **Dry run** to estimate scanned bytes.
-3. Reject if the estimate exceeds `BIGQUERY_MAX_BYTES_BILLED` (fail fast, no
-   billable job).
-4. Execute with `maximumBytesBilled` as a hard cap.
-5. Return bounded rows + metadata.
+### Distribution of the contract
 
-## The contract
+The canonical file lives at `contract/tools.json`.
 
-NDJSON over stdio, correlated by `id`:
+- The JS package **inlines** it at build time (`bun build` bundles the JSON
+  import in `js/src/contract.ts`).
+- The Python package **ships a copy** as `bigquery_mcp/contract.json` via
+  `force-include` in `pyproject.toml`; `contract.py` loads the packaged copy when
+  installed and the canonical file in a source checkout.
 
-```jsonc
-{ "id": "…", "op": "run_query", "params": { "sql": "SELECT 1" } }
-{ "id": "…", "ok": true,  "data": [ … ], "meta": { … } }
-{ "id": "…", "ok": false, "error": "…", "code": "…" }
-```
+## Tools
 
-Ops: `health`, `list_datasets`, `list_tables`, `get_table`, `dry_run_query`,
-`run_query`, `vector_search`.
+`run_query`, `dry_run_query`, `list_datasets_in_project`,
+`list_tables_in_dataset`, `get_table`, and (when enabled) `vector_search`.
 
-- TypeScript definition: `js/src/types/worker.ts`
-- Python worker: `src/bigquery_mcp/worker.py` + `src/bigquery_mcp/worker_ops.py`
-- Node worker: `js/src/workers/node/main.ts`
+Both servers implement each tool identically: `run_query` executes with a
+`maximumBytesBilled` hard cap; `dry_run_query` returns the planner's byte
+estimate without scanning; read-only `SELECT`/`WITH` safety validation is applied
+the same way (`query_safety.py` / `policy/sqlSafety.ts`).
 
 ## Running
 
 ```bash
-# Node control plane (auto-selects Python worker, falls back to Node)
+# Python server
+uv run bigquery-mcp --project YOUR_PROJECT --location US
+
+# JS server
 cd js && bun install && bun run build
 node dist/index.js --project YOUR_PROJECT --location US
-
-# Python worker standalone (normally spawned by the broker)
-uv run bigquery-mcp-worker        # reads requests on stdin
-
-# Original Python FastMCP server (unchanged, still available)
-uv run bigquery-mcp --project YOUR_PROJECT --location US
 ```
+
+## Releasing
+
+Both packages are versioned in lockstep and published by a label-driven workflow.
+See **RELEASING.md**.

@@ -43,20 +43,21 @@ make clean                  # Clean build artifacts
 - **src/bigquery_mcp/bigquery_tools.py**: Core MCP tool implementations
 - **src/bigquery_mcp/auth.py**: Authentication helpers and error formatting
 - **src/bigquery_mcp/query_safety.py**: SQL query validation and safety checks
-- **src/bigquery_mcp/worker.py / worker_ops.py**: stdio worker implementing the
-  language-neutral worker contract (reuses `bigquery_tools`)
+- **src/bigquery_mcp/contract.py**: loads the shared tool contract (descriptions)
 - FastMCP decorators for clean tool definitions
 - Async operations for BigQuery interactions
 
-### Node Control Plane & Worker Broker
-The `js/` directory is a separate npm package (`bigquery-mcp-js`, built with
-Bun): a Node/TypeScript MCP control plane that delegates BigQuery access to a
-worker via a broker (Python-first, Node fallback). The Python and JS packages
-are managed independently but share one NDJSON-over-stdio contract. See
-**ARCHITECTURE.md** for the full design. When changing tool behaviour, keep the
-Python worker (`worker_ops.py`) and the Node worker (`js/src/workers/node/main.ts`)
-in parity, and update the contract in `js/src/types/worker.ts`. Build/test the JS
-package with `bun install && bun run build && bun run test`.
+### Two independent servers + shared contract
+This repo ships two independent MCP servers that each talk to BigQuery directly
+(no broker, no worker layer): the Python server (`bigquery-mcp`, this package)
+and a separate npm package in `js/` (`bigquery-mcp-js`, Node/TypeScript, built
+with Bun). They are kept in sync by a single shared **tool contract** at
+`contract/tools.json` (tool names, descriptions, input + output JSON Schemas).
+The JS server is generated from the contract; the Python server is checked
+against it by `tests/test_contract.py`. See **ARCHITECTURE.md** and
+`contract/README.md`. When adding or changing a tool, edit `contract/tools.json`
+first, then implement the handler on each side and run both test suites. Build/
+test the JS package with `bun install && bun run build && bun run test`.
 
 ### Tool Implementation Pattern
 ```python

@@ -1,20 +1,33 @@
-#!/usr/bin/env node
 /**
- * Node worker: implements the language-neutral worker contract over stdio using
- * the official @google-cloud/bigquery client.
+ * Direct BigQuery access for the standalone MCP server, using the official
+ * @google-cloud/bigquery client. Each method maps to one tool in the shared
+ * contract (contract/tools.json) and returns a `{ data, meta }` pair that the
+ * tool layer wraps into the response envelope.
  *
- * This is the fallback worker the broker uses when the Python worker is not
- * available. It mirrors the behaviour of the Python implementation so tool
- * output is identical regardless of which worker handles a request.
+ * Behaviour mirrors the Python server (src/bigquery_mcp/bigquery_tools.py); the
+ * contract conformance tests keep the two from drifting.
  */
 
 import { BigQuery } from "@google-cloud/bigquery";
-import * as readline from "node:readline";
-import { type Config, loadConfig } from "../../config.js";
-import { isQuerySafe } from "../../policy/sqlSafety.js";
-import type { OpParams, WorkerOp, WorkerResponse } from "../../types/worker.js";
+import type { Config } from "./config.js";
+import { isQuerySafe } from "./policy/sqlSafety.js";
 
 type Json = Record<string, unknown>;
+
+/** Expected, user-facing failures. `code` becomes the response `error_type`. */
+export class ToolError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(message);
+  }
+}
+
+export interface OpOutput {
+  data: unknown;
+  meta?: Json;
+}
 
 function num(value: unknown): number {
   if (value === null || value === undefined) return 0;
@@ -31,7 +44,36 @@ function calcSearchFetchLimit(maxResults: number, search: string): number {
   return Math.min(maxResults * multiplier, 1000);
 }
 
-class BigQueryWorker {
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+  ]);
+}
+
+function tableType(meta: Json | undefined, partitionInfo?: unknown): string {
+  const baseType = String(meta?.type ?? "TABLE");
+  const isPartitioned = Boolean(meta?.timePartitioning || meta?.rangePartitioning || partitionInfo);
+  return isPartitioned && baseType === "TABLE" ? "PARTITIONED_TABLE" : baseType;
+}
+
+function extractPartitionDetails(meta: Json | undefined): Json | null {
+  const tp = meta?.timePartitioning as Json | undefined;
+  if (tp) {
+    return {
+      type: tp.type ?? null,
+      field: tp.field ?? "_PARTITIONTIME",
+      requires_filter: tp.requirePartitionFilter ?? null,
+    };
+  }
+  const rp = meta?.rangePartitioning as Json | undefined;
+  if (rp) {
+    return { type: "RANGE", field: rp.field ?? null };
+  }
+  return null;
+}
+
+export class BigQueryService {
   private bq: BigQuery;
   private config: Config;
 
@@ -44,6 +86,11 @@ class BigQueryWorker {
     });
   }
 
+  /** Minimal access check used at startup to validate credentials. */
+  async validateAccess(): Promise<void> {
+    await this.bq.getDatasets({ maxResults: 1 });
+  }
+
   private listMax(detailed: boolean): number {
     return detailed ? this.config.listMaxResultsDetailed : this.config.listMaxResults;
   }
@@ -52,12 +99,10 @@ class BigQueryWorker {
     return !this.config.allowedDatasets || this.config.allowedDatasets.includes(datasetId);
   }
 
-  // ---- query helpers -----------------------------------------------------
-
   private async runQueryJob(
     sql: string,
     opts: { dryRun?: boolean; params?: Json } = {},
-  ): Promise<{ rows: Json[]; totalBytesProcessed: number; totalRows: number }> {
+  ): Promise<{ rows: Json[]; totalBytesProcessed: number }> {
     const [job] = await this.bq.createQueryJob({
       query: sql,
       location: this.config.location || undefined,
@@ -67,28 +112,16 @@ class BigQueryWorker {
     });
     const stats = job.metadata?.statistics ?? {};
     const totalBytesProcessed = num(stats.totalBytesProcessed);
-    if (opts.dryRun) {
-      return { rows: [], totalBytesProcessed, totalRows: 0 };
-    }
+    if (opts.dryRun) return { rows: [], totalBytesProcessed };
     const [rows] = await job.getQueryResults();
-    return { rows: rows as Json[], totalBytesProcessed, totalRows: rows.length };
+    return { rows: rows as Json[], totalBytesProcessed };
   }
 
-  // ---- ops ---------------------------------------------------------------
-
-  async health(): Promise<{ data: Json; meta?: Json }> {
-    // Minimal access check: list a single dataset.
-    await this.bq.getDatasets({ maxResults: 1 });
-    return {
-      data: {
-        worker: "node",
-        project: this.config.projectId,
-        location: this.config.location,
-      },
-    };
-  }
-
-  async listDatasets(p: OpParams["list_datasets"]): Promise<{ data: unknown; meta: Json }> {
+  async listDatasets(p: {
+    search?: string;
+    detailed?: boolean;
+    max_results?: number | null;
+  }): Promise<OpOutput> {
     const search = p.search ?? "";
     const detailed = p.detailed ?? false;
     const maxResults = p.max_results ?? this.listMax(detailed);
@@ -109,6 +142,12 @@ class BigQueryWorker {
     list = list.slice(0, maxResults);
     const returnedCount = list.length;
 
+    const meta: Json = {
+      total_available: totalAvailable,
+      total_matching: search ? totalMatching : totalAvailable,
+      returned_count: returnedCount,
+    };
+
     if (detailed) {
       const detailedList: Json[] = [];
       for (const ds of list) {
@@ -121,39 +160,29 @@ class BigQueryWorker {
             `Warning: Failed to get table count for dataset ${ds.id}: ${(err as Error).message}\n`,
           );
         }
-        const [meta] = await ds.getMetadata();
+        const [m] = await ds.getMetadata();
         detailedList.push({
           dataset_id: ds.id,
-          description: meta?.description ?? null,
+          description: m?.description ?? null,
           table_count: tableCount,
         });
       }
       detailedList.sort((a, b) => String(a.dataset_id).localeCompare(String(b.dataset_id)));
-      return {
-        data: detailedList,
-        meta: {
-          total_available: totalAvailable,
-          total_matching: search ? totalMatching : totalAvailable,
-          returned_count: returnedCount,
-        },
-      };
+      return { data: detailedList, meta };
     }
 
-    const names = list.map((d) => d.id ?? "").sort();
-    return {
-      data: names,
-      meta: {
-        total_available: totalAvailable,
-        total_matching: search ? totalMatching : totalAvailable,
-        returned_count: returnedCount,
-      },
-    };
+    return { data: list.map((d) => d.id ?? "").sort(), meta };
   }
 
-  async listTables(p: OpParams["list_tables"]): Promise<{ data: unknown; meta: Json }> {
+  async listTables(p: {
+    dataset_id: string;
+    search?: string;
+    detailed?: boolean;
+    max_results?: number | null;
+  }): Promise<OpOutput> {
     const datasetId = p.dataset_id;
     if (!this.datasetAllowed(datasetId)) {
-      throw new AccessError(`Access to dataset '${datasetId}' is not allowed`);
+      throw new ToolError(`Access to dataset '${datasetId}' is not allowed`, "AccessDenied");
     }
     const search = p.search ?? "";
     const detailed = p.detailed ?? false;
@@ -180,47 +209,36 @@ class BigQueryWorker {
       location: dsMeta?.location ?? null,
       total_table_count: totalAvailable,
     };
+    const meta: Json = {
+      total_available: totalAvailable,
+      total_matching: search ? totalMatching : totalAvailable,
+      returned_count: returnedCount,
+      dataset_context: datasetContext,
+    };
 
     if (detailed) {
       const detailedList: Json[] = [];
       for (const t of list) {
-        const [meta] = await t.getMetadata();
+        const [m] = await t.getMetadata();
         detailedList.push({
           table_id: t.id,
-          type: tableType(meta),
-          description: meta?.description ?? null,
-          row_count: meta?.numRows ? num(meta.numRows) : null,
-          size_bytes: meta?.numBytes ? num(meta.numBytes) : null,
+          type: tableType(m),
+          description: m?.description ?? null,
+          row_count: m?.numRows ? num(m.numRows) : null,
+          size_bytes: m?.numBytes ? num(m.numBytes) : null,
         });
       }
       detailedList.sort((a, b) => String(a.table_id).localeCompare(String(b.table_id)));
-      return {
-        data: detailedList,
-        meta: {
-          total_available: totalAvailable,
-          total_matching: search ? totalMatching : totalAvailable,
-          returned_count: returnedCount,
-          dataset_context: datasetContext,
-        },
-      };
+      return { data: detailedList, meta };
     }
 
-    const names = list.map((t) => t.id ?? "").sort();
-    return {
-      data: names,
-      meta: {
-        total_available: totalAvailable,
-        total_matching: search ? totalMatching : totalAvailable,
-        returned_count: returnedCount,
-        dataset_context: datasetContext,
-      },
-    };
+    return { data: list.map((t) => t.id ?? "").sort(), meta };
   }
 
-  async getTable(p: OpParams["get_table"]): Promise<{ data: Json }> {
+  async getTable(p: { dataset_id: string; table_id: string }): Promise<OpOutput> {
     const { dataset_id: datasetId, table_id: tableId } = p;
     if (!this.datasetAllowed(datasetId)) {
-      throw new AccessError(`Access to dataset '${datasetId}' is not allowed`);
+      throw new ToolError(`Access to dataset '${datasetId}' is not allowed`, "AccessDenied");
     }
     const table = this.bq.dataset(datasetId).table(tableId);
     const [meta] = await table.getMetadata();
@@ -233,7 +251,6 @@ class BigQueryWorker {
     const sampleSize = this.config.sampleRowsForStats;
     const fillRates = await this.calcFillRates(tablePath, fields, sampleSize);
 
-    // Sample data, ordered by a timestamp/date column if present.
     let sampleData: Json[] = [];
     try {
       const tsCols = fields
@@ -281,9 +298,7 @@ class BigQueryWorker {
     sampleSize: number,
   ): Promise<Record<string, number>> {
     if (fields.length === 0) return {};
-    const checks = fields.map(
-      (f) => `COUNTIF(\`${f.name}\` IS NOT NULL) AS \`${f.name}_non_null\``,
-    );
+    const checks = fields.map((f) => `COUNTIF(\`${f.name}\` IS NOT NULL) AS \`${f.name}_non_null\``);
     const query = `
     SELECT
         COUNT(*) as total_rows,
@@ -308,10 +323,10 @@ class BigQueryWorker {
     }
   }
 
-  async dryRunQuery(p: OpParams["dry_run_query"]): Promise<{ data: Json; meta: Json }> {
-    const safety = isQuerySafe(p.sql);
-    if (!safety.safe) throw new SafetyError(safety.error);
-    const { totalBytesProcessed } = await this.runQueryJob(p.sql, { dryRun: true });
+  async dryRunQuery(p: { query: string }): Promise<OpOutput> {
+    const safety = isQuerySafe(p.query);
+    if (!safety.safe) throw new ToolError(safety.error, "UnsafeQuery");
+    const { totalBytesProcessed } = await this.runQueryJob(p.query, { dryRun: true });
     return {
       data: { total_bytes_processed: totalBytesProcessed },
       meta: {
@@ -321,10 +336,10 @@ class BigQueryWorker {
     };
   }
 
-  async runQuery(p: OpParams["run_query"]): Promise<{ data: unknown; meta: Json }> {
-    const safety = isQuerySafe(p.sql);
-    if (!safety.safe) throw new SafetyError(safety.error);
-    const { rows, totalBytesProcessed } = await this.runQueryJob(p.sql);
+  async runQuery(p: { query: string }): Promise<OpOutput> {
+    const safety = isQuerySafe(p.query);
+    if (!safety.safe) throw new ToolError(safety.error, "UnsafeQuery");
+    const { rows, totalBytesProcessed } = await this.runQueryJob(p.query);
     return {
       data: rows,
       meta: {
@@ -336,28 +351,33 @@ class BigQueryWorker {
     };
   }
 
-  // ---- vector search -----------------------------------------------------
-
-  async vectorSearch(p: OpParams["vector_search"]): Promise<{ data: unknown; meta?: Json }> {
+  async vectorSearch(p: {
+    query_text?: string;
+    table_path?: string;
+    top_k?: string;
+    select_columns?: string;
+    embedding_column?: string;
+  }): Promise<OpOutput> {
     const queryText = (p.query_text ?? "").trim();
-    if (!queryText) {
-      return this.discoverEmbeddingTables();
-    }
+    if (!queryText) return this.discoverEmbeddingTables();
 
     const tablePath = (p.table_path ?? "").trim();
     if (!tablePath) {
-      throw new SafetyError(
+      throw new ToolError(
         "table_path is required for search. Leave query_text empty to discover tables.",
+        "ValidationError",
       );
     }
     const model = this.config.embeddingModel;
     if (!model) {
-      throw new SafetyError(
+      throw new ToolError(
         "BIGQUERY_EMBEDDING_MODEL environment variable is required for vector search.",
+        "ConfigError",
       );
     }
-    const topK = p.top_k ?? 10;
-    if (topK < 1 || topK > 1000) throw new SafetyError("top_k must be between 1 and 1000");
+    const topK = Number.parseInt(p.top_k ?? "10", 10);
+    if (Number.isNaN(topK)) throw new ToolError(`top_k must be a number, got: '${p.top_k}'`, "ValidationError");
+    if (topK < 1 || topK > 1000) throw new ToolError("top_k must be between 1 and 1000", "ValidationError");
 
     const distanceType = this.config.distanceType;
     const embeddingColumn = (p.embedding_column ?? "embedding").trim() || "embedding";
@@ -366,9 +386,7 @@ class BigQueryWorker {
       .map((c) => c.trim())
       .filter(Boolean);
     const selectClause =
-      selectColumns.length > 0
-        ? selectColumns.map((c) => `base.\`${c}\``).join(", ")
-        : "base.*";
+      selectColumns.length > 0 ? selectColumns.map((c) => `base.\`${c}\``).join(", ") : "base.*";
 
     const query = `
         WITH query_embedding AS (
@@ -414,10 +432,9 @@ class BigQueryWorker {
     };
   }
 
-  private async discoverEmbeddingTables(): Promise<{ data: unknown; meta: Json }> {
+  private async discoverEmbeddingTables(): Promise<OpOutput> {
     const pattern = this.config.embeddingColumnContains;
 
-    // Strategy 1: explicitly configured tables.
     if (this.config.embeddingTables && this.config.embeddingTables.length > 0) {
       const tables = this.config.embeddingTables
         .map((path): Json | null => {
@@ -437,7 +454,6 @@ class BigQueryWorker {
       };
     }
 
-    // Strategy 2: region-level INFORMATION_SCHEMA scan.
     const region = this.config.location || "US";
     let query = `
         SELECT table_schema as dataset_id, table_name as table_id, column_name
@@ -478,111 +494,14 @@ class BigQueryWorker {
     } catch (err) {
       const msg = (err as Error).message;
       if (msg.includes("Access Denied") || msg.includes("403")) {
-        throw new AccessError(
+        throw new ToolError(
           "Discovery requires 'BigQuery Metadata Viewer' role on the project, " +
             "or set BIGQUERY_EMBEDDING_TABLES env var to skip discovery. " +
             "Example: BIGQUERY_EMBEDDING_TABLES=dataset.table1,dataset.table2",
+          "AccessDenied",
         );
       }
       throw err;
     }
   }
 }
-
-// ---- helpers -------------------------------------------------------------
-
-class AccessError extends Error {}
-class SafetyError extends Error {}
-
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([
-    promise,
-    new Promise<T>((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
-  ]);
-}
-
-function tableType(meta: Json | undefined, partitionInfo?: unknown): string {
-  const baseType = String(meta?.type ?? "TABLE");
-  const isPartitioned = Boolean(meta?.timePartitioning || meta?.rangePartitioning || partitionInfo);
-  return isPartitioned && baseType === "TABLE" ? "PARTITIONED_TABLE" : baseType;
-}
-
-function extractPartitionDetails(meta: Json | undefined): Json | null {
-  const tp = meta?.timePartitioning as Json | undefined;
-  if (tp) {
-    return {
-      type: tp.type ?? null,
-      field: tp.field ?? "_PARTITIONTIME",
-      requires_filter: tp.requirePartitionFilter ?? null,
-    };
-  }
-  const rp = meta?.rangePartitioning as Json | undefined;
-  if (rp) {
-    return { type: "RANGE", field: rp.field ?? null };
-  }
-  return null;
-}
-
-// ---- stdio NDJSON loop ---------------------------------------------------
-
-async function dispatch(worker: BigQueryWorker, op: WorkerOp, params: Json): Promise<{ data: unknown; meta?: Json }> {
-  switch (op) {
-    case "health":
-      return worker.health();
-    case "list_datasets":
-      return worker.listDatasets(params as OpParams["list_datasets"]);
-    case "list_tables":
-      return worker.listTables(params as OpParams["list_tables"]);
-    case "get_table":
-      return worker.getTable(params as OpParams["get_table"]);
-    case "dry_run_query":
-      return worker.dryRunQuery(params as OpParams["dry_run_query"]);
-    case "run_query":
-      return worker.runQuery(params as OpParams["run_query"]);
-    case "vector_search":
-      return worker.vectorSearch(params as OpParams["vector_search"]);
-    default:
-      throw new SafetyError(`Unknown op: ${op}`);
-  }
-}
-
-function write(res: WorkerResponse): void {
-  process.stdout.write(`${JSON.stringify(res)}\n`);
-}
-
-function main(): void {
-  const config = loadConfig();
-  const worker = new BigQueryWorker(config);
-  const rl = readline.createInterface({ input: process.stdin });
-
-  rl.on("line", (line) => {
-    const trimmed = line.trim();
-    if (!trimmed) return;
-    let req: { id?: string; op?: WorkerOp; params?: Json };
-    try {
-      req = JSON.parse(trimmed);
-    } catch {
-      process.stderr.write(`[node-worker] non-JSON request: ${trimmed}\n`);
-      return;
-    }
-    const id = req.id ?? "";
-    const op = req.op;
-    if (!op) {
-      write({ id, ok: false, error: "Missing 'op' in request", code: "BadRequest" });
-      return;
-    }
-    void dispatch(worker, op, req.params ?? {})
-      .then((result) => {
-        write({ id, ok: true, data: result.data, meta: result.meta });
-      })
-      .catch((err: unknown) => {
-        const error = err as Error;
-        const code = error?.constructor?.name ?? "Error";
-        write({ id, ok: false, error: error?.message ?? String(err), code });
-      });
-  });
-
-  rl.on("close", () => process.exit(0));
-}
-
-main();

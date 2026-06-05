@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BigQuery MCP tool contract",
+  "type": "object",
+  "required": ["contractVersion", "tools"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "contractVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semver for the contract. Bump major when changing a tool in a backwards-incompatible way."
+    },
+    "description": { "type": "string" },
+    "envelope": { "type": "object" },
+    "tools": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "summary", "input", "output"],
+        "properties": {
+          "name": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+          "summary": { "type": "string", "minLength": 1 },
+          "input": {
+            "type": "object",
+            "required": ["type", "properties"],
+            "description": "JSON Schema for the tool's arguments."
+          },
+          "output": {
+            "type": "object",
+            "required": ["type"],
+            "description": "JSON Schema for the success response envelope."
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

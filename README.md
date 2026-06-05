@@ -8,6 +8,11 @@ Practical MCP server for navigating BigQuery datasets and tables by LLMs. Design
 - **Safe to run**: read-only query execution with guardrails (SELECT/WITH only, comment stripping)
 - **Supports vector search**: Use bigquery as your vector store. See [Vector Search](#-vector-search-optional) section for full setup instructions.
 
+> **Two implementations, one contract.** This is the Python server. A standalone
+> Node/TypeScript server, [`bigquery-mcp-js`](js/), exposes the **same tools**.
+> Both implement a shared contract (`contract/tools.json`); pick whichever fits
+> your runtime. See [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ## Quick Start
 
 **Prerequisites:** Python 3.10+ and [uv](https://github.com/astral-sh/uv) package manager

@@ -1,7 +1,7 @@
 {
   "name": "bigquery-mcp-js",
   "version": "0.1.0",
-  "description": "Node/TypeScript MCP control plane for BigQuery with a pluggable worker broker (Python-first, Node fallback).",
+  "description": "Standalone Node/TypeScript MCP server for BigQuery. Shares a tool contract with the Python bigquery-mcp server.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -15,10 +15,9 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "bun build ./src/index.ts ./src/workers/node/main.ts --outdir dist --target node --root src",
+    "build": "bun build ./src/index.ts --outdir dist --target node",
     "clean": "rm -rf dist",
     "start": "bun ./src/index.ts",
-    "worker": "bun ./src/workers/node/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "prepublishOnly": "bun run clean && bun run build"
@@ -31,6 +30,7 @@
   "devDependencies": {
     "@types/bun": "^1.1.14",
     "@types/node": "^22.10.0",
+    "ajv": "^8.17.1",
     "typescript": "^5.6.3"
   }
 }
