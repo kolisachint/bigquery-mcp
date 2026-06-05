@@ -23,23 +23,46 @@ import {
 } from "../types/worker.js";
 import { type SpawnSpec, WorkerProcess } from "./workerProcess.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// dist/broker -> dist -> js -> <repo root>
-const repoRoot = path.resolve(__dirname, "..", "..", "..");
-const pythonSrc = path.join(repoRoot, "src");
+const moduleDir = path.dirname(fileURLToPath(import.meta.url));
+
+/** Walk up from `start` until a directory containing `relativeTarget` is found. */
+function findUp(start: string, relativeTarget: string): string | null {
+  let dir = start;
+  for (;;) {
+    if (existsSync(path.join(dir, relativeTarget))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+// The Python worker package only exists in this monorepo (dev/build), not in a
+// standalone npm install. When present, expose its source on PYTHONPATH so
+// `-m bigquery_mcp.worker` resolves without an editable install. Resolution is
+// layout-agnostic so it works whether we run from bundled `dist/` or `src/`.
+const pyAnchor = findUp(moduleDir, path.join("src", "bigquery_mcp", "worker.py"));
+const pythonSrc = pyAnchor ? path.join(pyAnchor, "src") : null;
+
+/** Locate the bundled Node worker across bundled-dist / tsc-dist / source layouts. */
+export function defaultNodeWorker(): string {
+  const candidates = [
+    path.resolve(moduleDir, "workers", "node", "main.js"), // bundled: dist/index.js sibling tree
+    path.resolve(moduleDir, "..", "workers", "node", "main.js"), // unbundled dist/<dir> layout
+    path.resolve(moduleDir, "..", "workers", "node", "main.ts"), // running from src via bun
+  ];
+  return candidates.find((p) => existsSync(p)) ?? candidates[0];
+}
 
 function pythonSpawnSpec(config: Config): SpawnSpec {
   const env = workerEnv(config);
-  // Prepend the in-repo Python source so `-m bigquery_mcp.worker` resolves in
-  // development without an editable install. An installed package still wins
-  // via its console entry point if BIGQUERY_MCP_PYTHON_CMD is overridden.
-  if (existsSync(pythonSrc)) {
+  if (pythonSrc && existsSync(pythonSrc)) {
     env.PYTHONPATH = env.PYTHONPATH ? `${pythonSrc}${path.delimiter}${env.PYTHONPATH}` : pythonSrc;
   }
+  const cwd = pyAnchor ?? undefined;
   const custom = process.env.BIGQUERY_MCP_PYTHON_CMD;
   if (custom && custom.trim()) {
     const [command, ...args] = custom.trim().split(/\s+/);
-    return { kind: "python", command, args, env, cwd: repoRoot };
+    return { kind: "python", command, args, env, cwd };
   }
   const interpreter = process.env.BIGQUERY_MCP_PYTHON ?? "python3";
   return {
@@ -47,15 +70,13 @@ function pythonSpawnSpec(config: Config): SpawnSpec {
     command: interpreter,
     args: ["-m", "bigquery_mcp.worker"],
     env,
-    cwd: repoRoot,
+    cwd,
   };
 }
 
 function nodeSpawnSpec(config: Config): SpawnSpec {
   const env = workerEnv(config);
-  // dist/broker -> dist -> dist/workers/node/main.js
-  const defaultWorker = path.resolve(__dirname, "..", "workers", "node", "main.js");
-  const workerPath = process.env.BIGQUERY_MCP_NODE_WORKER ?? defaultWorker;
+  const workerPath = process.env.BIGQUERY_MCP_NODE_WORKER ?? defaultNodeWorker();
   return {
     kind: "node",
     command: process.execPath,

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { test } from "bun:test";
 import { checkEstimatedBytes } from "../policy/costPolicy.js";
 import { isQuerySafe } from "../policy/sqlSafety.js";
 

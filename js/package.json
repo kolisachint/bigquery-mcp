@@ -15,12 +15,12 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "bun build ./src/index.ts ./src/workers/node/main.ts --outdir dist --target node --root src",
     "clean": "rm -rf dist",
-    "start": "node dist/index.js",
-    "worker": "node dist/workers/node/main.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --test dist/test/*.test.js",
+    "start": "bun ./src/index.ts",
+    "worker": "bun ./src/workers/node/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "prepublishOnly": "bun run clean && bun run build"
   },
   "dependencies": {
@@ -29,6 +29,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@types/bun": "^1.1.14",
     "@types/node": "^22.10.0",
     "typescript": "^5.6.3"
   }

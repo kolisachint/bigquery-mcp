@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import * as path from "node:path";
-import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { WorkerBroker } from "../broker/workerBroker.js";
+import { test } from "bun:test";
+import { existsSync } from "node:fs";
+import { WorkerBroker, defaultNodeWorker } from "../broker/workerBroker.js";
 import { loadConfig } from "../config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// dist/test -> dist -> js -> js/test-fixtures
+// {src,dist}/test -> {src,dist} -> js -> js/test-fixtures
 const fakeWorker = path.resolve(__dirname, "..", "..", "test-fixtures", "fakeWorker.mjs");
 
 function baseEnv(): void {
@@ -26,6 +27,13 @@ test("selects the node worker when forced", async () => {
   } finally {
     broker.stop();
   }
+});
+
+test("resolves the bundled Node worker to a real file", () => {
+  // Guards against bundling/layout changes breaking the default worker path.
+  const resolved = defaultNodeWorker();
+  assert.ok(existsSync(resolved), `expected worker file to exist: ${resolved}`);
+  assert.match(resolved, /workers[/\\]node[/\\]main\.(ts|js)$/);
 });
 
 test("falls back to node when the python worker is unhealthy", async () => {
