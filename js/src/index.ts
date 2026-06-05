@@ -8,10 +8,10 @@
 import { type CliOverrides, loadConfig } from "./config.js";
 import { runServer } from "./server.js";
 
-const HELP = `bigquery-mcp-node - Node MCP control plane for BigQuery
+const HELP = `bigquery-mcp-js - Node MCP control plane for BigQuery
 
 Usage:
-  bigquery-mcp-node [options]
+  bigquery-mcp-js [options]
 
 Options:
   --project <id>          Google Cloud project ID (overrides GCP_PROJECT_ID)

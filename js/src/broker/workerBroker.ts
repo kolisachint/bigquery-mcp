@@ -24,7 +24,7 @@ import {
 import { type SpawnSpec, WorkerProcess } from "./workerProcess.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// dist/broker -> dist -> node -> <repo root>
+// dist/broker -> dist -> js -> <repo root>
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 const pythonSrc = path.join(repoRoot, "src");
 

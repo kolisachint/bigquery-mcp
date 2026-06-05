@@ -6,7 +6,7 @@ import { WorkerBroker } from "../broker/workerBroker.js";
 import { loadConfig } from "../config.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-// dist/test -> dist -> node -> node/test-fixtures
+// dist/test -> dist -> js -> js/test-fixtures
 const fakeWorker = path.resolve(__dirname, "..", "..", "test-fixtures", "fakeWorker.mjs");
 
 function baseEnv(): void {

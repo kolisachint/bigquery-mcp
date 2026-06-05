@@ -49,13 +49,14 @@ make clean                  # Clean build artifacts
 - Async operations for BigQuery interactions
 
 ### Node Control Plane & Worker Broker
-The `node/` directory is a separate npm package (`bigquery-mcp-node`): a
-Node/TypeScript MCP control plane that delegates BigQuery access to a worker via
-a broker (Python-first, Node fallback). The Python and Node packages are managed
-independently but share one NDJSON-over-stdio contract. See **ARCHITECTURE.md**
-for the full design. When changing tool behaviour, keep the Python worker
-(`worker_ops.py`) and the Node worker (`node/src/workers/node/main.ts`) in parity,
-and update the contract in `node/src/types/worker.ts`.
+The `js/` directory is a separate npm package (`bigquery-mcp-js`, built with
+Bun): a Node/TypeScript MCP control plane that delegates BigQuery access to a
+worker via a broker (Python-first, Node fallback). The Python and JS packages
+are managed independently but share one NDJSON-over-stdio contract. See
+**ARCHITECTURE.md** for the full design. When changing tool behaviour, keep the
+Python worker (`worker_ops.py`) and the Node worker (`js/src/workers/node/main.ts`)
+in parity, and update the contract in `js/src/types/worker.ts`. Build/test the JS
+package with `bun install && bun run build && bun run test`.
 
 ### Tool Implementation Pattern
 ```python

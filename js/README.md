@@ -1,4 +1,4 @@
-# bigquery-mcp-node
+# bigquery-mcp-js
 
 A Node/TypeScript **MCP control plane** for BigQuery with a **pluggable worker
 broker**. The MCP server owns the protocol, validation, and safety/cost policy;
@@ -22,10 +22,13 @@ stdio MCP server (Node/TS)  ->  worker broker  ->  Python worker | Node worker  
 
 ## Install & build
 
+Uses [Bun](https://bun.sh) as the package manager and build runner (the compiled
+output still targets Node and runs under either runtime).
+
 ```bash
-npm install
-npm run build      # tsc -> dist/
-npm test           # node:test (policy + broker routing, no BigQuery needed)
+bun install
+bun run build      # tsc -> dist/
+bun run test       # node:test (policy + broker routing, no BigQuery needed)
 ```
 
 ## Run

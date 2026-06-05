@@ -6,11 +6,11 @@ language-neutral worker contract:
 | Package | Lang | Distribution | Role |
 |---|---|---|---|
 | `bigquery-mcp` (root, `src/bigquery_mcp/`) | Python | pip / PyPI | FastMCP server **and** the preferred stdio worker (`bigquery-mcp-worker`) |
-| `bigquery-mcp-node` (`node/`) | TypeScript | npm | MCP control plane + worker broker + bundled Node fallback worker |
+| `bigquery-mcp-js` (`js/`) | TypeScript | npm (built with Bun) | MCP control plane + worker broker + bundled Node fallback worker |
 
 ```
                     ┌─────────────────────────────────────────────┐
-   MCP host  ⇄ stdio │  bigquery-mcp-node (control plane)           │
+   MCP host  ⇄ stdio │  bigquery-mcp-js (control plane)             │
                      │   • tool schemas, validation                │
                      │   • SQL safety + dry-run cost policy         │
                      │   • worker broker (discovery + fallback)     │
@@ -19,7 +19,7 @@ language-neutral worker contract:
                      ┌───────────────┴───────────────┐
                      ▼                                ▼
           Python worker (preferred)         Node worker (fallback)
-          bigquery_mcp.worker               node/.../workers/node/main.ts
+          bigquery_mcp.worker               js/.../workers/node/main.ts
                      │                                │
                      └──────────── BigQuery SDK ──────┘
                        (google-cloud-bigquery)  (@google-cloud/bigquery)
@@ -68,15 +68,15 @@ NDJSON over stdio, correlated by `id`:
 Ops: `health`, `list_datasets`, `list_tables`, `get_table`, `dry_run_query`,
 `run_query`, `vector_search`.
 
-- TypeScript definition: `node/src/types/worker.ts`
+- TypeScript definition: `js/src/types/worker.ts`
 - Python worker: `src/bigquery_mcp/worker.py` + `src/bigquery_mcp/worker_ops.py`
-- Node worker: `node/src/workers/node/main.ts`
+- Node worker: `js/src/workers/node/main.ts`
 
 ## Running
 
 ```bash
 # Node control plane (auto-selects Python worker, falls back to Node)
-cd node && npm install && npm run build
+cd js && bun install && bun run build
 node dist/index.js --project YOUR_PROJECT --location US
 
 # Python worker standalone (normally spawned by the broker)
