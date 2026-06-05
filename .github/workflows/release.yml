@@ -1,33 +1,131 @@
-name: Release to PyPI
+name: Release
+
+# Label-driven releases. Merging a PR into the default branch with a
+# `release:patch`, `release:minor` or `release:major` label bumps the version
+# (in lockstep across the Python and JS packages), tags it, and publishes to
+# both PyPI and npm. `workflow_dispatch` provides a manual fallback.
+#
+# Required configuration:
+#   - PyPI: Trusted Publishing for `bigquery-mcp` (uses the `pypi` environment).
+#   - npm:  repository secret `NPM_TOKEN` (an automation token with publish rights).
 
 on:
-  release:
-    types: [published]
+  pull_request:
+    types: [closed]
+    branches: [master, main]
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "Version bump level"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  test:
+  # Decide whether to release and at what bump level.
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      level: ${{ steps.decide.outputs.level }}
+    steps:
+      - name: Determine bump level
+        id: decide
+        env:
+          EVENT: ${{ github.event_name }}
+          MERGED: ${{ github.event.pull_request.merged }}
+          DISPATCH_LEVEL: ${{ github.event.inputs.level }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "level=$DISPATCH_LEVEL" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$MERGED" != "true" ]; then
+            echo "level=none" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case ",$LABELS," in
+            *,release:major,*) echo "level=major" >>"$GITHUB_OUTPUT" ;;
+            *,release:minor,*) echo "level=minor" >>"$GITHUB_OUTPUT" ;;
+            *,release:patch,*) echo "level=patch" >>"$GITHUB_OUTPUT" ;;
+            *) echo "level=none" >>"$GITHUB_OUTPUT" ;;
+          esac
+
+  # Quality gates must pass before we cut a release.
+  test-python:
+    needs: prepare
+    if: needs.prepare.outputs.level != 'none'
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
-      fail-fast: false
     steps:
-      - name: Check out
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Set up the environment
         uses: ./.github/actions/setup-python-env
         with:
           python-version: ${{ matrix.python-version }}
+      - run: make check
+      - run: uv run python -m pytest tests
 
-      - name: Run quality checks
-        run: make check
+  test-js:
+    needs: prepare
+    if: needs.prepare.outputs.level != 'none'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run build
+      - run: bun run test
 
-      - name: Run tests
-        run: uv run python -m pytest tests
+  # Bump versions in lockstep, commit, and tag.
+  bump:
+    needs: [prepare, test-python, test-js]
+    if: needs.prepare.outputs.level != 'none'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      version: ${{ steps.bump.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.ref || github.ref_name }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: oven-sh/setup-bun@v2
+      - name: Bump version
+        id: bump
+        run: echo "version=$(bun scripts/bump-version.ts ${{ needs.prepare.outputs.level }})" >>"$GITHUB_OUTPUT"
+      - name: Commit and tag
+        env:
+          VERSION: ${{ steps.bump.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "Release $VERSION"
+          git tag "$VERSION"
+          BRANCH="${{ github.event.pull_request.base.ref || github.ref_name }}"
+          git push origin "HEAD:$BRANCH"
+          git push origin "$VERSION"
 
+  # Publish the Python package to PyPI via Trusted Publishing.
   release-pypi:
-    needs: test
+    needs: [prepare, bump]
+    if: needs.prepare.outputs.level != 'none'
     runs-on: ubuntu-latest
     environment:
       name: pypi
@@ -35,19 +133,52 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - name: Check out
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.version }}
       - name: Set up the environment
         uses: ./.github/actions/setup-python-env
-
-      - name: Set release version to pyproject.toml
-        run: |
-          sed -i 's/version = ".*"/version = "${{ github.ref_name }}"/' pyproject.toml
-          sed -i 's/__version__ = ".*"/__version__ = "${{ github.ref_name }}"/' src/bigquery_mcp/__init__.py
-
       - name: Build package
         run: make build
-
       - name: Publish to PyPI using Trusted Publisher
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  # Publish the JS package to npm with Bun.
+  release-npm:
+    needs: [prepare, bump]
+    if: needs.prepare.outputs.level != 'none'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: js
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.bump.outputs.version }}
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run build
+      - name: Publish to npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          bun publish --access public
+
+  # Create a GitHub Release with generated notes (uses GITHUB_TOKEN, so it does
+  # not retrigger this workflow).
+  github-release:
+    needs: [prepare, bump, release-pypi, release-npm]
+    if: needs.prepare.outputs.level != 'none'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.bump.outputs.version }}
+        run: gh release create "$VERSION" --title "$VERSION" --generate-notes --verify-tag

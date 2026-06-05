@@ -25,6 +25,10 @@ dependencies = [
     "google-cloud-bigquery==3.41.0",
 ]
 
+# The shared tool contract is the single source of truth for the tool surface
+# (see contract/tools.json). It is shipped inside the package as
+# bigquery_mcp/contract.json via force-include below.
+
 [project.scripts]
 bigquery-mcp = "bigquery_mcp.server:main"
 
@@ -42,6 +46,7 @@ dev = [
     "mypy>=1.17.0,<2.0.0",
     "ruff>=0.12.0,<1.0.0",
     "types-PyYAML>=6.0.0,<7.0.0",
+    "jsonschema>=4.0.0,<5.0.0",
 ]
 
 [build-system]
@@ -51,6 +56,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bigquery_mcp"]
+
+# Ship the canonical contract inside the package as bigquery_mcp/contract.json.
+[tool.hatch.build.targets.wheel.force-include]
+"contract/tools.json" = "bigquery_mcp/contract.json"
 
 [tool.mypy]
 files = ["src"]

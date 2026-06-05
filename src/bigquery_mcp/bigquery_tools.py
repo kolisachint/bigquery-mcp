@@ -19,10 +19,13 @@ if __name__ == "__main__":
 
 try:
     # Try relative imports first (when run as module)
+    from . import contract
     from .query_safety import is_query_safe
 except ImportError:
     # Fall back to absolute imports (when run directly)
     from query_safety import is_query_safe  # type: ignore[import-not-found,no-redef]
+
+    import contract  # type: ignore[no-redef]
 
 # Configuration defaults (can be overridden via CLI args or env vars)
 DEFAULT_LIST_MAX_RESULTS = 500  # Basic list operations return limit
@@ -284,9 +287,7 @@ def register_tools(  # noqa: C901
         if env_datasets:
             allowed_datasets = [d.strip() for d in env_datasets.split(",") if d.strip()]
 
-    @mcp.tool(
-        description="Execute read-only BigQuery SQL queries with safety validation. Use LIMIT in your query to control result size (recommended: start with LIMIT 20). For semantic search, consider using the vector_search tool or write custom VECTOR_SEARCH queries."
-    )
+    @mcp.tool(description=contract.description("run_query"))
     async def run_query(
         query: Annotated[
             str,
@@ -319,7 +320,7 @@ def register_tools(  # noqa: C901
             return _create_success_response(
                 data=rows,
                 total_count=len(rows),
-                total_rows_in_result=results.total_rows,
+                total_rows_in_result=getattr(results, "total_rows", len(rows)),
                 bytes_processed=query_job.total_bytes_processed,
                 max_bytes_billed=get_query_max_bytes_billed(),
             )
@@ -327,7 +328,40 @@ def register_tools(  # noqa: C901
         except (GoogleCloudError, Exception) as e:
             return _create_error_response(e)
 
-    @mcp.tool(description="List all datasets in BigQuery project with optional search and detailed information")
+    @mcp.tool(description=contract.description("dry_run_query"))
+    async def dry_run_query(
+        query: Annotated[
+            str,
+            Field(description="BigQuery SQL SELECT query to dry-run (only read-only queries allowed)."),
+        ],
+    ) -> dict[str, Any]:
+        """Estimate the bytes a BigQuery SQL query would scan without executing it.
+
+        Runs a dry-run job to read the query planner's byte estimate. No data is
+        scanned and no billable job is created.
+
+        Args:
+            query: BigQuery SQL SELECT query to dry-run
+        """
+        try:
+            is_safe, error_msg = is_query_safe(query)
+            if not is_safe:
+                return _create_error_response(Exception(error_msg))
+
+            job_config = _create_query_job_config(dry_run=True, use_query_cache=False)
+            query_job = bigquery_client.query(query, job_config=job_config)
+            bytes_processed = query_job.total_bytes_processed
+
+            return _create_success_response(
+                data={"total_bytes_processed": bytes_processed},
+                total_bytes_processed=bytes_processed,
+                max_bytes_billed=get_query_max_bytes_billed(),
+            )
+
+        except (GoogleCloudError, Exception) as e:
+            return _create_error_response(e)
+
+    @mcp.tool(description=contract.description("list_datasets_in_project"))
     async def list_datasets_in_project(
         search: Annotated[str, Field(description="Filter datasets by name (case-insensitive)", default="")] = "",
         detailed: Annotated[
@@ -388,11 +422,18 @@ def register_tools(  # noqa: C901
                         table_list = await asyncio.wait_for(asyncio.to_thread(list_tables_for_dataset), timeout=10.0)
                         table_count = len(table_list)
                     except TimeoutError:
-                        # Log timeout but continue with dataset (table_count = 0)
-                        print(f"Warning: Timeout getting table count for dataset {dataset.dataset_id}")
+                        # Log timeout but continue with dataset (table_count = 0).
+                        # stderr only: stdout is the MCP stdio transport.
+                        print(
+                            f"Warning: Timeout getting table count for dataset {dataset.dataset_id}",
+                            file=sys.stderr,
+                        )
                     except Exception as e:
-                        # Log other errors but continue with dataset (table_count = 0)
-                        print(f"Warning: Failed to get table count for dataset {dataset.dataset_id}: {e}")
+                        # Log other errors but continue with dataset (table_count = 0).
+                        print(
+                            f"Warning: Failed to get table count for dataset {dataset.dataset_id}: {e}",
+                            file=sys.stderr,
+                        )
 
                     dataset_info = {
                         "dataset_id": dataset.dataset_id,
@@ -420,7 +461,7 @@ def register_tools(  # noqa: C901
         except (GoogleCloudError, Exception) as e:
             return _create_error_response(e)
 
-    @mcp.tool(description="List tables in dataset with optional search, detailed information, and dataset context")
+    @mcp.tool(description=contract.description("list_tables_in_dataset"))
     async def list_tables_in_dataset(
         dataset_id: Annotated[str, Field(description="Dataset ID to list tables from")],
         search: Annotated[str, Field(description="Filter tables by name (case-insensitive)", default="")] = "",
@@ -517,7 +558,7 @@ def register_tools(  # noqa: C901
         except (GoogleCloudError, Exception) as e:
             return _create_error_response(e)
 
-    @mcp.tool(description="Get detailed table information with schema and column fill rate analysis")
+    @mcp.tool(description=contract.description("get_table"))
     async def get_table(
         dataset_id: Annotated[str, Field(description="Dataset ID containing the table")],
         table_id: Annotated[str, Field(description="Table ID to get detailed information for")],
@@ -813,31 +854,27 @@ def register_tools(  # noqa: C901
 
             _validate_model_sync()
 
-        @mcp.tool(
-            description="Vector search: discover embedding tables (no query_text) or perform semantic search (with query_text). Configure BIGQUERY_EMBEDDING_MODEL env var for search mode."
-        )
+        @mcp.tool(description=contract.description("vector_search"))
         async def vector_search(
             query_text: Annotated[
                 str,
-                Field(description="Text to search for semantically. Example: 'sentence to search for'"),
+                Field(description="Text to search for semantically. Leave empty to discover embedding tables."),
             ] = "",
             table_path: Annotated[
                 str,
-                Field(description="Table path as 'dataset.table'. Example: 'my_dataset.products'"),
+                Field(description="Table path as 'dataset.table'. Required for search mode."),
             ] = "",
             top_k: Annotated[
                 str,
-                Field(description="Number of results to return (1-1000). Example: '10'"),
+                Field(description="Number of results to return (1-1000)."),
             ] = "10",
             select_columns: Annotated[
                 str,
-                Field(
-                    description="Comma-separated columns to return, or empty for all. Example: 'name,description,price'"
-                ),
+                Field(description="Comma-separated columns to return, or empty for all."),
             ] = "",
             embedding_column: Annotated[
                 str,
-                Field(description="Name of the embedding column. Example: 'embedding'"),
+                Field(description="Name of the embedding column."),
             ] = "embedding",
         ) -> dict[str, Any]:
             """Vector search tool with two modes:

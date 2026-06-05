@@ -1,0 +1,36 @@
+{
+  "name": "bigquery-mcp-js",
+  "version": "0.1.0",
+  "description": "Standalone Node/TypeScript MCP server for BigQuery. Shares a tool contract with the Python bigquery-mcp server.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "bigquery-mcp-js": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir dist --target node",
+    "clean": "rm -rf dist",
+    "start": "bun ./src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "prepublishOnly": "bun run clean && bun run build"
+  },
+  "dependencies": {
+    "@google-cloud/bigquery": "^7.9.1",
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.1.14",
+    "@types/node": "^22.10.0",
+    "ajv": "^8.17.1",
+    "typescript": "^5.6.3"
+  }
+}

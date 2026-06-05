@@ -1,0 +1,90 @@
+# Architecture: two independent servers, one shared contract
+
+This repository ships **two independent MCP servers** that talk to BigQuery
+directly. They do not call each other and there is no broker or worker layer.
+What keeps them from drifting is a single shared **tool contract**.
+
+| Package | Lang | Distribution | Entry |
+|---|---|---|---|
+| `bigquery-mcp` (root, `src/bigquery_mcp/`) | Python | pip / PyPI | `bigquery-mcp` (FastMCP, stdio) |
+| `bigquery-mcp-js` (`js/`) | TypeScript | npm (built with Bun) | `bigquery-mcp-js` (MCP SDK, stdio) |
+
+```
+        ┌─────────────────────────────┐        ┌─────────────────────────────┐
+MCP host│  bigquery-mcp  (Python)     │   OR   │  bigquery-mcp-js  (Node)    │
+  ⇄stdio│  FastMCP + bigquery_tools   │        │  MCP SDK + BigQueryService  │
+        └──────────────┬──────────────┘        └──────────────┬──────────────┘
+                       │ google-cloud-bigquery                │ @google-cloud/bigquery
+                       └──────────────┬───────────────────────┘
+                                      ▼
+                                  BigQuery
+
+                 both implement ─►  contract/tools.json  ◄─ single source of truth
+```
+
+Pick whichever server fits your runtime. They expose the same tools with the
+same inputs and outputs.
+
+## The shared contract
+
+`contract/tools.json` is the **single source of truth** for the tool surface:
+each tool's `name`, `summary` (description), `input` JSON Schema, and `output`
+JSON Schema. See `contract/README.md`.
+
+- **JS is generated from the contract.** `js/src/tools/register.ts` iterates the
+  contract, builds each tool's input validation (zod) from its `input` schema,
+  and wires it to the handler in `js/src/tools/handlers.ts`. Descriptions come
+  straight from the contract.
+- **Python is checked against the contract.** `src/bigquery_mcp/bigquery_tools.py`
+  reads tool descriptions from the contract, and `tests/test_contract.py` asserts
+  that the registered tools (names, descriptions, input parameter names/types/
+  required-ness/descriptions) match it.
+- **Outputs are validated both sides.** `tests/test_contract.py` (Python,
+  `jsonschema`) and `js/src/test/contract.test.ts` (JS, `ajv`) run each tool
+  against a mocked BigQuery client and validate the result against the contract's
+  `output` schema.
+
+### Adding or changing a tool
+
+1. Edit `contract/tools.json` (name, `summary`, `input`, `output`).
+2. JS: add a handler in `js/src/tools/handlers.ts` (registration + validation are
+   generated from the contract).
+3. Python: add the tool in `src/bigquery_mcp/bigquery_tools.py`, reading its
+   description from `contract.description("<name>")`.
+4. Run both suites — the conformance/output tests fail if either side diverges.
+
+### Distribution of the contract
+
+The canonical file lives at `contract/tools.json`.
+
+- The JS package **inlines** it at build time (`bun build` bundles the JSON
+  import in `js/src/contract.ts`).
+- The Python package **ships a copy** as `bigquery_mcp/contract.json` via
+  `force-include` in `pyproject.toml`; `contract.py` loads the packaged copy when
+  installed and the canonical file in a source checkout.
+
+## Tools
+
+`run_query`, `dry_run_query`, `list_datasets_in_project`,
+`list_tables_in_dataset`, `get_table`, and (when enabled) `vector_search`.
+
+Both servers implement each tool identically: `run_query` executes with a
+`maximumBytesBilled` hard cap; `dry_run_query` returns the planner's byte
+estimate without scanning; read-only `SELECT`/`WITH` safety validation is applied
+the same way (`query_safety.py` / `policy/sqlSafety.ts`).
+
+## Running
+
+```bash
+# Python server
+uv run bigquery-mcp --project YOUR_PROJECT --location US
+
+# JS server
+cd js && bun install && bun run build
+node dist/index.js --project YOUR_PROJECT --location US
+```
+
+## Releasing
+
+Both packages are versioned in lockstep and published by a label-driven workflow.
+See **RELEASING.md**.
