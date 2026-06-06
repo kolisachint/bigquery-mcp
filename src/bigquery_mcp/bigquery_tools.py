@@ -287,8 +287,8 @@ def register_tools(  # noqa: C901
         if env_datasets:
             allowed_datasets = [d.strip() for d in env_datasets.split(",") if d.strip()]
 
-    @mcp.tool(description=contract.description("run_query"))
-    async def run_query(
+    @mcp.tool(description=contract.description("execute_sql"))
+    async def execute_sql(
         query: Annotated[
             str,
             Field(
@@ -361,8 +361,8 @@ def register_tools(  # noqa: C901
         except (GoogleCloudError, Exception) as e:
             return _create_error_response(e)
 
-    @mcp.tool(description=contract.description("list_datasets_in_project"))
-    async def list_datasets_in_project(
+    @mcp.tool(description=contract.description("list_dataset_ids"))
+    async def list_dataset_ids(
         search: Annotated[str, Field(description="Filter datasets by name (case-insensitive)", default="")] = "",
         detailed: Annotated[
             bool, Field(description="Include descriptions and table counts for each dataset", default=False)
@@ -461,8 +461,70 @@ def register_tools(  # noqa: C901
         except (GoogleCloudError, Exception) as e:
             return _create_error_response(e)
 
-    @mcp.tool(description=contract.description("list_tables_in_dataset"))
-    async def list_tables_in_dataset(
+    @mcp.tool(description=contract.description("get_dataset_info"))
+    async def get_dataset_info(
+        dataset_id: Annotated[str, Field(description="Dataset ID to get metadata for")],
+    ) -> dict[str, Any]:
+        """Get metadata for a single BigQuery dataset.
+
+        Metadata-only: this reads the dataset resource and lists table names
+        (both free metadata operations) — no bytes are scanned and no query
+        cost is incurred.
+
+        Args:
+            dataset_id: BigQuery dataset ID
+        """
+        # Check if dataset is allowed
+        if allowed_datasets and dataset_id not in allowed_datasets:
+            return _create_error_response(Exception(f"Access to dataset '{dataset_id}' is not allowed"))
+
+        try:
+            dataset_ref = bigquery_client.dataset(dataset_id)
+            dataset_obj = await asyncio.to_thread(bigquery_client.get_dataset, dataset_ref)
+
+            # Table count is a free metadata operation (no bytes scanned).
+            table_count = 0
+            try:
+
+                def list_tables_for_dataset(ref: Any = dataset_ref) -> list[Any]:
+                    return list(bigquery_client.list_tables(ref, max_results=1000))
+
+                table_list = await asyncio.wait_for(asyncio.to_thread(list_tables_for_dataset), timeout=10.0)
+                table_count = len(table_list)
+            except TimeoutError:
+                print(
+                    f"Warning: Timeout getting table count for dataset {dataset_id}",
+                    file=sys.stderr,
+                )
+            except Exception as e:
+                print(
+                    f"Warning: Failed to get table count for dataset {dataset_id}: {e}",
+                    file=sys.stderr,
+                )
+
+            labels = getattr(dataset_obj, "labels", None)
+            created = getattr(dataset_obj, "created", None)
+            modified = getattr(dataset_obj, "modified", None)
+
+            dataset_info = {
+                "dataset_id": dataset_id,
+                "friendly_name": getattr(dataset_obj, "friendly_name", None),
+                "description": getattr(dataset_obj, "description", None),
+                "location": getattr(dataset_obj, "location", None),
+                "created": created.isoformat() if created else None,
+                "modified": modified.isoformat() if modified else None,
+                "default_table_expiration_ms": getattr(dataset_obj, "default_table_expiration_ms", None),
+                "labels": dict(labels) if labels else None,
+                "table_count": table_count,
+            }
+
+            return _create_success_response(data=dataset_info)
+
+        except (GoogleCloudError, Exception) as e:
+            return _create_error_response(e)
+
+    @mcp.tool(description=contract.description("list_table_ids"))
+    async def list_table_ids(
         dataset_id: Annotated[str, Field(description="Dataset ID to list tables from")],
         search: Annotated[str, Field(description="Filter tables by name (case-insensitive)", default="")] = "",
         detailed: Annotated[
@@ -558,8 +620,8 @@ def register_tools(  # noqa: C901
         except (GoogleCloudError, Exception) as e:
             return _create_error_response(e)
 
-    @mcp.tool(description=contract.description("get_table"))
-    async def get_table(
+    @mcp.tool(description=contract.description("get_table_info"))
+    async def get_table_info(
         dataset_id: Annotated[str, Field(description="Dataset ID containing the table")],
         table_id: Annotated[str, Field(description="Table ID to get detailed information for")],
     ) -> dict[str, Any]:

@@ -14,7 +14,7 @@ def setup_env(env_vars):
 
 
 @pytest.mark.asyncio
-async def test_run_query_with_dangerous_keywords():
+async def test_execute_sql_with_dangerous_keywords():
     """Test that dangerous SQL keywords are blocked."""
     from bigquery_mcp.bigquery_tools import register_tools
 
@@ -35,7 +35,7 @@ async def test_run_query_with_dangerous_keywords():
     mock_bigquery_client = Mock()
     register_tools(mcp, mock_bigquery_client)
 
-    run_query = tools["run_query"]
+    execute_sql = tools["execute_sql"]
 
     dangerous_queries = [
         "DELETE FROM table WHERE id = 1",
@@ -48,7 +48,7 @@ async def test_run_query_with_dangerous_keywords():
     ]
 
     for query in dangerous_queries:
-        result = await run_query(query)
+        result = await execute_sql(query)
         assert result["success"] is False
         assert (
             "dangerous" in result["error"].lower()
@@ -58,7 +58,7 @@ async def test_run_query_with_dangerous_keywords():
 
 
 @pytest.mark.asyncio
-async def test_run_query_bigquery_error():
+async def test_execute_sql_bigquery_error():
     """Test query execution with BigQuery error."""
     from bigquery_mcp.bigquery_tools import register_tools
 
@@ -79,12 +79,12 @@ async def test_run_query_bigquery_error():
     mock_bigquery_client = Mock()
     register_tools(mcp, mock_bigquery_client)
 
-    run_query = tools["run_query"]
+    execute_sql = tools["execute_sql"]
 
     # Mock BigQuery error
     mock_bigquery_client.query.side_effect = GoogleCloudError("Test error")
 
-    result = await run_query("SELECT * FROM test_table")
+    result = await execute_sql("SELECT * FROM test_table")
 
     assert result["success"] is False
     assert "Test error" in result["error"]
@@ -93,8 +93,8 @@ async def test_run_query_bigquery_error():
 
 
 @pytest.mark.asyncio
-async def test_run_query_applies_maximum_bytes_billed(monkeypatch):
-    """Test that run_query sets maximum_bytes_billed on query jobs."""
+async def test_execute_sql_applies_maximum_bytes_billed(monkeypatch):
+    """Test that execute_sql sets maximum_bytes_billed on query jobs."""
     monkeypatch.setenv("BIGQUERY_MAX_BYTES_BILLED", "123456")
 
     from bigquery_mcp.bigquery_tools import register_tools
@@ -122,8 +122,8 @@ async def test_run_query_applies_maximum_bytes_billed(monkeypatch):
 
     register_tools(mcp, mock_bigquery_client)
 
-    run_query = tools["run_query"]
-    result = await run_query("SELECT 1")
+    execute_sql = tools["execute_sql"]
+    result = await execute_sql("SELECT 1")
 
     assert result["success"] is True
     job_config = mock_bigquery_client.query.call_args.kwargs["job_config"]
@@ -152,28 +152,28 @@ async def test_error_handling_with_mocked_exceptions():
     mock_bigquery_client = Mock()
     register_tools(mcp, mock_bigquery_client)
 
-    # Test BigQuery error with list_datasets_in_project
-    list_datasets_in_project = tools["list_datasets_in_project"]
+    # Test BigQuery error with list_dataset_ids
+    list_dataset_ids = tools["list_dataset_ids"]
 
     with patch("bigquery_mcp.bigquery_tools.asyncio.to_thread") as mock_to_thread:
         mock_to_thread.side_effect = GoogleCloudError("BigQuery error")
 
-        result = await list_datasets_in_project()
+        result = await list_dataset_ids()
         assert result["success"] is False
         assert "BigQuery error" in result["error"]
         assert result["error_type"] in ["GoogleCloudError", "GoogleAPICallError"]
 
-    # Test general exception with list_tables_in_dataset
-    list_tables_in_dataset = tools["list_tables_in_dataset"]
+    # Test general exception with list_table_ids
+    list_table_ids = tools["list_table_ids"]
 
     # This test should test the allowed_datasets functionality since it's now enabled
-    result = await list_tables_in_dataset("test_dataset")
+    result = await list_table_ids("test_dataset")
     assert result["success"] is False
     assert "not allowed" in result["error"]  # The allowed_datasets check should trigger
 
-    # Test get_table error handling - should also fail due to allowed_datasets restriction
-    get_table = tools["get_table"]
+    # Test get_table_info error handling - should also fail due to allowed_datasets restriction
+    get_table_info = tools["get_table_info"]
 
-    result = await get_table("test_dataset", "nonexistent_table")
+    result = await get_table_info("test_dataset", "nonexistent_table")
     assert result["success"] is False
     assert "not allowed" in result["error"]  # The allowed_datasets check should trigger

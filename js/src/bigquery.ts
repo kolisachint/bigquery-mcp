@@ -174,6 +174,42 @@ export class BigQueryService {
     return { data: list.map((d) => d.id ?? "").sort(), meta };
   }
 
+  async getDatasetInfo(p: { dataset_id: string }): Promise<OpOutput> {
+    const datasetId = p.dataset_id;
+    if (!this.datasetAllowed(datasetId)) {
+      throw new ToolError(`Access to dataset '${datasetId}' is not allowed`, "AccessDenied");
+    }
+    const dataset = this.bq.dataset(datasetId);
+    const [m] = await dataset.getMetadata();
+
+    // Table count is a free metadata operation (no bytes scanned).
+    let tableCount = 0;
+    try {
+      const tables = await withTimeout(dataset.getTables({ maxResults: 1000 }), 10_000);
+      tableCount = tables[0].length;
+    } catch (err) {
+      process.stderr.write(
+        `Warning: Failed to get table count for dataset ${datasetId}: ${(err as Error).message}\n`,
+      );
+    }
+
+    return {
+      data: {
+        dataset_id: datasetId,
+        friendly_name: m?.friendlyName ?? null,
+        description: m?.description ?? null,
+        location: m?.location ?? null,
+        created: m?.creationTime ? new Date(num(m.creationTime)).toISOString() : null,
+        modified: m?.lastModifiedTime ? new Date(num(m.lastModifiedTime)).toISOString() : null,
+        default_table_expiration_ms: m?.defaultTableExpirationMs
+          ? num(m.defaultTableExpirationMs)
+          : null,
+        labels: m?.labels ?? null,
+        table_count: tableCount,
+      },
+    };
+  }
+
   async listTables(p: {
     dataset_id: string;
     search?: string;

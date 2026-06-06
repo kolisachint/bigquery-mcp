@@ -100,7 +100,7 @@ Optional:
 Vector Search (optional):
 - `BIGQUERY_VECTOR_SEARCH_ENABLED` - Enable/disable vector search tools (default: true)
 - `BIGQUERY_EMBEDDING_MODEL` - Default embedding model for vector_search
-- `BIGQUERY_VECTOR_COLUMN_CONTAINS` - Column pattern for find_embedding_tables (default: embedding)
+- `BIGQUERY_EMBEDDING_COLUMN_CONTAINS` - Column pattern for vector_search discovery mode (default: embedding)
 
 ## Code Style & Quality
 
@@ -145,14 +145,38 @@ bigquery-mcp/
 └── tox.ini              # Multi-environment testing
 ```
 
+## Optimization priority (read before touching tools)
+
+This server optimizes in a strict order — when goals conflict, the earlier one wins:
+
+1. **Minimize BigQuery cost (bytes scanned) first.** Prefer metadata APIs over
+   queries. Discovery tools scan zero bytes; `dry_run_query` estimates cost
+   without running; every real query is capped by `maximum_bytes_billed`.
+2. **Then minimize LLM (token) cost.** Default to names-only / minimal output;
+   expand only on `detailed=true`. Keep responses compact, structured JSON.
+3. **Then minimize latency** — but never by spending more BigQuery or token cost.
+
+See `ARCHITECTURE.md` ("Design priorities") for the mechanisms.
+
+## Tool naming conventions
+
+Tool names follow Google's BigQuery MCP / MCP Toolbox surface:
+`execute_sql`, `list_dataset_ids`, `get_dataset_info`, `list_table_ids`,
+`get_table_info`. When adding a tool that maps to a Google capability, match its
+name. Only invent a name when Google has no equivalent — current own tools are
+`dry_run_query` and `vector_search`. Google's advanced tools (`forecast`,
+`analyze_contribution`, `search_catalog`, `ask_data_insights`) are not yet
+implemented; if added, use those exact names.
+
 ## Core Tool Behaviors
 
-- **list_datasets**: Returns minimal data by default, detailed on request
-- **list_tables**: Shows basic info (name, rows, modified) unless detailed=true
-- **get_table**: Always returns comprehensive schema and metadata
-- **run_query**: Executes SELECT-only queries with safety validation
-- **find_embedding_tables**: Discovers tables with vector columns via INFORMATION_SCHEMA (cached)
-- **vector_search**: Performs semantic similarity search using VECTOR_SEARCH + ML.GENERATE_EMBEDDING
+- **list_dataset_ids**: Metadata-only (zero bytes). Names by default, detailed on request
+- **get_dataset_info**: Metadata-only (zero bytes). Single dataset's description, location, labels, table count
+- **list_table_ids**: Metadata-only (zero bytes). Basic info (name) by default; row count/size unless detailed=true
+- **get_table_info**: Schema + metadata + per-column fill rates + sample rows (bounded sample scan)
+- **dry_run_query**: Estimates bytes scanned without running the query (zero cost)
+- **execute_sql**: Executes SELECT-only queries with safety validation and a bytes-billed cap
+- **vector_search**: Discovers embedding tables (cached, via INFORMATION_SCHEMA) or performs semantic search using VECTOR_SEARCH + ML.GENERATE_EMBEDDING
 
 ## Development Workflow
 

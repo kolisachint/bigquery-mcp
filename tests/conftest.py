@@ -47,10 +47,21 @@ def mock_bigquery_client():
     mock_table_obj.range_partitioning = None
     mock_table_obj.table_constraints = None
 
+    # Mock dataset object (from get_dataset) with JSON-serializable fields
+    mock_dataset_obj = Mock()
+    mock_dataset_obj.friendly_name = "Test Dataset"
+    mock_dataset_obj.description = "A test dataset"
+    mock_dataset_obj.location = "US"
+    mock_dataset_obj.created = None
+    mock_dataset_obj.modified = None
+    mock_dataset_obj.default_table_expiration_ms = None
+    mock_dataset_obj.labels = {}
+
     # Setup mock client methods
     mock_client.list_datasets.return_value = [mock_dataset]
     mock_client.list_tables.return_value = [mock_table]
     mock_client.get_table.return_value = mock_table_obj
+    mock_client.get_dataset.return_value = mock_dataset_obj
     mock_client.dataset.return_value = Mock()
 
     # Mock query job

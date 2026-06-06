@@ -33,9 +33,10 @@ the vector-search vars, …).
 
 ## Tools
 
-`run_query`, `dry_run_query`, `list_datasets_in_project`,
-`list_tables_in_dataset`, `get_table`, and (when enabled) `vector_search` —
-defined once in `contract/tools.json`.
+`list_dataset_ids`, `get_dataset_info`, `list_table_ids`, `get_table_info`,
+`dry_run_query`, `execute_sql`, and (when enabled) `vector_search` — defined once
+in `contract/tools.json`. Names follow Google's BigQuery MCP conventions;
+`dry_run_query` and `vector_search` are own additions with no Google equivalent.
 
 ## How the contract drives this server
 
