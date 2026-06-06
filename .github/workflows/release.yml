@@ -5,9 +5,9 @@ name: Release
 # (in lockstep across the Python and JS packages), tags it, and publishes to
 # both PyPI and npm. `workflow_dispatch` provides a manual fallback.
 #
-# Required configuration:
-#   - PyPI: Trusted Publishing for `bigquery-mcp` (uses the `pypi` environment).
-#   - npm:  repository secret `NPM_TOKEN` (an automation token with publish rights).
+# Required configuration (repository secrets):
+#   - PyPI: `PYPI_API_TOKEN` (a PyPI API token with upload rights for `bigquery-mcp`).
+#   - npm:  `NPM_TOKEN` (an automation token with publish rights).
 
 on:
   pull_request:
@@ -122,16 +122,11 @@ jobs:
           git push origin "HEAD:$BRANCH"
           git push origin "$VERSION"
 
-  # Publish the Python package to PyPI via Trusted Publishing.
+  # Publish the Python package to PyPI using an API token.
   release-pypi:
     needs: [prepare, bump]
     if: needs.prepare.outputs.level != 'none'
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/project/bigquery-mcp
-    permissions:
-      id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -140,8 +135,10 @@ jobs:
         uses: ./.github/actions/setup-python-env
       - name: Build package
         run: make build
-      - name: Publish to PyPI using Trusted Publisher
+      - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          password: ${{ secrets.PYPI_API_TOKEN }}
 
   # Publish the JS package to npm with Bun.
   release-npm:
