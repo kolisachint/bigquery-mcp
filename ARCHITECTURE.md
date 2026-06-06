@@ -65,13 +65,42 @@ The canonical file lives at `contract/tools.json`.
 
 ## Tools
 
-`run_query`, `dry_run_query`, `list_datasets_in_project`,
-`list_tables_in_dataset`, `get_table`, and (when enabled) `vector_search`.
+`list_dataset_ids`, `get_dataset_info`, `list_table_ids`, `get_table_info`,
+`dry_run_query`, `execute_sql`, and (when enabled) `vector_search`.
 
-Both servers implement each tool identically: `run_query` executes with a
+Names follow Google's [BigQuery MCP / MCP Toolbox](https://googleapis.github.io/genai-toolbox/resources/tools/bigquery/)
+conventions (`execute_sql`, `list_dataset_ids`, `get_dataset_info`,
+`list_table_ids`, `get_table_info`). Tools with no Google equivalent are this
+project's own additions: `dry_run_query` and `vector_search`. When a capability
+maps to a Google tool, match its name; only invent a name when Google has none.
+
+Both servers implement each tool identically: `execute_sql` executes with a
 `maximumBytesBilled` hard cap; `dry_run_query` returns the planner's byte
 estimate without scanning; read-only `SELECT`/`WITH` safety validation is applied
 the same way (`query_safety.py` / `policy/sqlSafety.ts`).
+
+## Design priorities: BigQuery cost > LLM cost > latency
+
+The tool surface is designed around an explicit ordering — when goals conflict,
+the earlier one wins. The contract orders tools cheapest-first to reinforce it.
+
+1. **BigQuery cost (bytes scanned) first.** Discovery (`list_dataset_ids`,
+   `get_dataset_info`, `list_table_ids`, `get_table_info`) uses the metadata APIs
+   (`list_datasets`/`get_dataset`/`list_tables`/`get_table`) and scans **zero
+   bytes**. `dry_run_query` runs a dry-run job (`dry_run=true`,
+   `use_query_cache=false`) to read the planner's estimate without billing.
+   Every job that does scan — `execute_sql`, the `get_table_info` fill-rate +
+   sample probes, and `vector_search` — goes through `_create_query_job_config`
+   / `runQueryJob`, which always sets `maximum_bytes_billed`. The probes in
+   `get_table_info` are bounded by a sampled `LIMIT`. Tool descriptions push the
+   model toward partition/cluster filters, narrow column lists, and `LIMIT`.
+2. **LLM (token) cost second.** List tools return **names only** unless
+   `detailed=true`, so the agent narrows the search space cheaply before
+   requesting heavier metadata. All responses are compact, structured JSON.
+3. **Latency last — never at the expense of (1) or (2).** Metadata calls run in
+   worker threads with short timeouts; list+search uses a bounded fetch
+   multiplier (`_calculate_search_fetch_limit` / `calcSearchFetchLimit`);
+   embedding-table discovery is cached.
 
 ## Running
 

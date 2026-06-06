@@ -1,7 +1,7 @@
 {
   "$schema": "./contract.schema.json",
-  "contractVersion": "1.0.0",
-  "description": "Single source of truth for the BigQuery MCP tool surface, shared by the Python server (bigquery-mcp) and the JS server (bigquery-mcp-js). Both servers MUST expose exactly these tools with these input schemas and produce outputs matching these output schemas. Edit this file to add or change a tool, then implement the handler on each side.",
+  "contractVersion": "2.0.0",
+  "description": "Single source of truth for the BigQuery MCP tool surface, shared by the Python server (bigquery-mcp) and the JS server (bigquery-mcp-js). Both servers MUST expose exactly these tools with these input schemas and produce outputs matching these output schemas. Tool names follow Google's BigQuery MCP / MCP Toolbox conventions (execute_sql, list_dataset_ids, get_dataset_info, list_table_ids, get_table_info); tools with no Google equivalent (dry_run_query, vector_search) are this project's own additions. Tools are ordered cheapest-first to reflect the optimization priority: minimize BigQuery cost (bytes scanned) first, then LLM/token cost, then latency. Edit this file to add or change a tool, then implement the handler on each side.",
   "envelope": {
     "description": "Every tool returns a JSON object. On success: `success: true`, `data`, plus the tool-specific meta fields described in each tool's `output`. On failure: `success: false` with `error` and `error_type`.",
     "error": {
@@ -17,66 +17,8 @@
   },
   "tools": [
     {
-      "name": "run_query",
-      "summary": "Execute read-only BigQuery SQL queries with safety validation. Use LIMIT in your query to control result size (recommended: start with LIMIT 20). For semantic search, consider using the vector_search tool or write custom VECTOR_SEARCH queries.",
-      "input": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["query"],
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "BigQuery SQL SELECT query to execute (only read-only queries allowed). Use LIMIT clause to control result size."
-          }
-        }
-      },
-      "output": {
-        "type": "object",
-        "additionalProperties": true,
-        "required": ["success", "data", "total_count", "bytes_processed", "max_bytes_billed"],
-        "properties": {
-          "success": { "const": true },
-          "data": { "type": "array", "items": { "type": "object" } },
-          "total_count": { "type": "integer" },
-          "total_rows_in_result": { "type": "integer" },
-          "bytes_processed": { "type": ["integer", "null"] },
-          "max_bytes_billed": { "type": "integer" }
-        }
-      }
-    },
-    {
-      "name": "dry_run_query",
-      "summary": "Estimate the bytes a BigQuery SQL query would scan without executing it. Useful for cost checks before running expensive queries.",
-      "input": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["query"],
-        "properties": {
-          "query": {
-            "type": "string",
-            "description": "BigQuery SQL SELECT query to dry-run (only read-only queries allowed)."
-          }
-        }
-      },
-      "output": {
-        "type": "object",
-        "additionalProperties": true,
-        "required": ["success", "data", "total_bytes_processed", "max_bytes_billed"],
-        "properties": {
-          "success": { "const": true },
-          "data": {
-            "type": "object",
-            "required": ["total_bytes_processed"],
-            "properties": { "total_bytes_processed": { "type": ["integer", "null"] } }
-          },
-          "total_bytes_processed": { "type": ["integer", "null"] },
-          "max_bytes_billed": { "type": "integer" }
-        }
-      }
-    },
-    {
-      "name": "list_datasets_in_project",
-      "summary": "List all datasets in BigQuery project with optional search and detailed information",
+      "name": "list_dataset_ids",
+      "summary": "List dataset IDs in the BigQuery project. Metadata-only: no bytes are scanned and no query cost is incurred. Returns names only by default (cheapest for LLM context); set detailed=true for descriptions and table counts. Start data discovery here.",
       "input": {
         "type": "object",
         "additionalProperties": false,
@@ -115,8 +57,46 @@
       }
     },
     {
-      "name": "list_tables_in_dataset",
-      "summary": "List tables in dataset with optional search, detailed information, and dataset context",
+      "name": "get_dataset_info",
+      "summary": "Get metadata for a single BigQuery dataset (description, location, labels, default table expiration, table count). Metadata-only: no bytes are scanned and no query cost is incurred.",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["dataset_id"],
+        "properties": {
+          "dataset_id": {
+            "type": "string",
+            "description": "Dataset ID to get metadata for"
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["success", "data"],
+        "properties": {
+          "success": { "const": true },
+          "data": {
+            "type": "object",
+            "required": ["dataset_id", "table_count"],
+            "properties": {
+              "dataset_id": { "type": "string" },
+              "friendly_name": { "type": ["string", "null"] },
+              "description": { "type": ["string", "null"] },
+              "location": { "type": ["string", "null"] },
+              "created": { "type": ["string", "null"] },
+              "modified": { "type": ["string", "null"] },
+              "default_table_expiration_ms": { "type": ["integer", "null"] },
+              "labels": { "type": ["object", "null"] },
+              "table_count": { "type": "integer" }
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "list_table_ids",
+      "summary": "List table IDs in a dataset. Metadata-only: no bytes are scanned and no query cost is incurred. Returns names only by default (cheapest for LLM context); set detailed=true for row counts and sizes.",
       "input": {
         "type": "object",
         "additionalProperties": false,
@@ -177,8 +157,8 @@
       }
     },
     {
-      "name": "get_table",
-      "summary": "Get detailed table information with schema and column fill rate analysis",
+      "name": "get_table_info",
+      "summary": "Get a table's schema, metadata, per-column fill rates, and a few sample rows. Use this to judge a table's relevance before writing a query. Cost note: fill-rate and sample-row probes scan only a small bounded sample and are capped by max_bytes_billed.",
       "input": {
         "type": "object",
         "additionalProperties": false,
@@ -235,8 +215,66 @@
       }
     },
     {
+      "name": "dry_run_query",
+      "summary": "Estimate the bytes a BigQuery SQL query would scan WITHOUT executing it. No data is scanned and no billable job is created (zero query cost). Run this before execute_sql to check the cost of a query against large tables. This is a project-specific tool with no Google MCP equivalent.",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["query"],
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "BigQuery SQL SELECT query to dry-run (only read-only queries allowed)."
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["success", "data", "total_bytes_processed", "max_bytes_billed"],
+        "properties": {
+          "success": { "const": true },
+          "data": {
+            "type": "object",
+            "required": ["total_bytes_processed"],
+            "properties": { "total_bytes_processed": { "type": ["integer", "null"] } }
+          },
+          "total_bytes_processed": { "type": ["integer", "null"] },
+          "max_bytes_billed": { "type": "integer" }
+        }
+      }
+    },
+    {
+      "name": "execute_sql",
+      "summary": "Execute a read-only BigQuery SQL query (SELECT/WITH only) with safety validation and a per-query bytes-billed cap. To minimize BigQuery cost: filter on partition/cluster columns, select only the columns you need (avoid SELECT *), and add a LIMIT (start with LIMIT 20). Use dry_run_query first to estimate cost on large tables. For semantic search, use the vector_search tool or write a VECTOR_SEARCH query.",
+      "input": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["query"],
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "BigQuery SQL SELECT query to execute (only read-only queries allowed). Use LIMIT clause to control result size."
+          }
+        }
+      },
+      "output": {
+        "type": "object",
+        "additionalProperties": true,
+        "required": ["success", "data", "total_count", "bytes_processed", "max_bytes_billed"],
+        "properties": {
+          "success": { "const": true },
+          "data": { "type": "array", "items": { "type": "object" } },
+          "total_count": { "type": "integer" },
+          "total_rows_in_result": { "type": "integer" },
+          "bytes_processed": { "type": ["integer", "null"] },
+          "max_bytes_billed": { "type": "integer" }
+        }
+      }
+    },
+    {
       "name": "vector_search",
-      "summary": "Vector search: discover embedding tables (no query_text) or perform semantic search (with query_text). Configure BIGQUERY_EMBEDDING_MODEL env var for search mode.",
+      "summary": "Vector search: discover embedding tables (no query_text) or perform semantic search (with query_text). Configure BIGQUERY_EMBEDDING_MODEL env var for search mode. This is a project-specific tool with no Google MCP equivalent.",
       "input": {
         "type": "object",
         "additionalProperties": false,

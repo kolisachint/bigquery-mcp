@@ -73,10 +73,12 @@ class TestBigQueryMCPIntegration:
         # Verify we have all expected tools
         tool_names = {tool["name"] for tool in tools}
         expected_tools = {
-            "run_query",
-            "list_datasets_in_project",
-            "list_tables_in_dataset",
-            "get_table",
+            "execute_sql",
+            "dry_run_query",
+            "list_dataset_ids",
+            "get_dataset_info",
+            "list_table_ids",
+            "get_table_info",
             "vector_search",
         }
         assert expected_tools == tool_names
@@ -97,7 +99,7 @@ class TestBigQueryMCPIntegration:
     async def test_shakespeare_dataset_query_analysis(self, mcp_client):
         """Test Shakespeare dataset query via MCP."""
         result = await mcp_client.call_tool(
-            "run_query",
+            "execute_sql",
             {
                 "query": """
             SELECT
@@ -130,7 +132,7 @@ class TestBigQueryMCPIntegration:
     async def test_dataset_exploration_workflow(self, mcp_client):
         """Test complete dataset exploration workflow."""
         # Step 1: List datasets (will show user's project datasets)
-        result = await mcp_client.call_tool("list_datasets_in_project", {"detailed": False, "max_results": 10})
+        result = await mcp_client.call_tool("list_dataset_ids", {"detailed": False, "max_results": 10})
 
         content = result["content"][0]
         basic_result = json.loads(content["text"])
@@ -140,7 +142,7 @@ class TestBigQueryMCPIntegration:
 
         # Step 2: Get detailed dataset info with SAME max_results
         result = await mcp_client.call_tool(
-            "list_datasets_in_project",
+            "list_dataset_ids",
             {
                 "detailed": True,
                 "max_results": 10,  # Same as basic call
@@ -184,7 +186,7 @@ class TestBigQueryMCPIntegration:
         for search_term in search_patterns:
             # Test with detailed=False
             result_basic = await mcp_client.call_tool(
-                "list_datasets_in_project", {"search": search_term, "detailed": False, "max_results": 50}
+                "list_dataset_ids", {"search": search_term, "detailed": False, "max_results": 50}
             )
 
             content_basic = result_basic["content"][0]
@@ -192,7 +194,7 @@ class TestBigQueryMCPIntegration:
 
             # Test with detailed=True
             result_detailed = await mcp_client.call_tool(
-                "list_datasets_in_project", {"search": search_term, "detailed": True, "max_results": 50}
+                "list_dataset_ids", {"search": search_term, "detailed": True, "max_results": 50}
             )
 
             content_detailed = result_detailed["content"][0]
@@ -225,7 +227,7 @@ class TestBigQueryMCPIntegration:
     async def test_table_operations(self, mcp_client):
         """Test table listing and analysis operations."""
         # First, list datasets to find one we can analyze
-        result = await mcp_client.call_tool("list_datasets_in_project", {"max_results": 10})
+        result = await mcp_client.call_tool("list_dataset_ids", {"max_results": 10})
 
         content = result["content"][0]
         tool_result = json.loads(content["text"])
@@ -234,7 +236,7 @@ class TestBigQueryMCPIntegration:
             # If user has datasets, try to list tables in first one
             dataset_id = tool_result["data"][0]
 
-            result = await mcp_client.call_tool("list_tables_in_dataset", {"dataset_id": dataset_id, "max_results": 5})
+            result = await mcp_client.call_tool("list_table_ids", {"dataset_id": dataset_id, "max_results": 5})
 
             content = result["content"][0]
             table_result = json.loads(content["text"])
@@ -252,7 +254,7 @@ class TestBigQueryMCPIntegration:
                     else table_result["data"][0]["table_id"]
                 )
 
-                result = await mcp_client.call_tool("get_table", {"dataset_id": dataset_id, "table_id": table_id})
+                result = await mcp_client.call_tool("get_table_info", {"dataset_id": dataset_id, "table_id": table_id})
 
                 content = result["content"][0]
                 detail_result = json.loads(content["text"])
@@ -286,7 +288,7 @@ class TestBigQueryMCPIntegration:
         ]
 
         for dangerous_query in dangerous_queries:
-            result = await mcp_client.call_tool("run_query", {"query": dangerous_query})
+            result = await mcp_client.call_tool("execute_sql", {"query": dangerous_query})
 
             content = result["content"][0]
             tool_result = json.loads(content["text"])
@@ -299,7 +301,7 @@ class TestBigQueryMCPIntegration:
     async def test_error_handling_and_recovery(self, mcp_client):
         """Test comprehensive error handling scenarios."""
         # Test 1: Invalid SQL syntax
-        result = await mcp_client.call_tool("run_query", {"query": "SELECT FROM WHERE INVALID SQL"})
+        result = await mcp_client.call_tool("execute_sql", {"query": "SELECT FROM WHERE INVALID SQL"})
 
         content = result["content"][0]
         tool_result = json.loads(content["text"])
@@ -307,7 +309,7 @@ class TestBigQueryMCPIntegration:
         assert "error" in tool_result
 
         # Test 2: Non-existent table reference
-        result = await mcp_client.call_tool("run_query", {"query": "SELECT * FROM `nonexistent.dataset.table`"})
+        result = await mcp_client.call_tool("execute_sql", {"query": "SELECT * FROM `nonexistent.dataset.table`"})
 
         content = result["content"][0]
         tool_result = json.loads(content["text"])
@@ -315,7 +317,7 @@ class TestBigQueryMCPIntegration:
 
         # Test 3: Invalid tool parameters
         result = await mcp_client.call_tool(
-            "run_query",
+            "execute_sql",
             {
                 # Missing required 'query' parameter
             },
@@ -333,7 +335,7 @@ class TestBigQueryMCPIntegration:
         """Test handling of large query results with limits."""
         # Query that could return many results, but limit it
         result = await mcp_client.call_tool(
-            "run_query",
+            "execute_sql",
             {
                 "query": """
             SELECT word, word_count, corpus

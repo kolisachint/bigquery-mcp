@@ -1,5 +1,5 @@
 -- BigQuery MCP Server - Sample Queries
--- These queries demonstrate various BigQuery features and can be used with the run_query tool
+-- These queries demonstrate various BigQuery features and can be used with the execute_sql tool
 
 -- ============================================
 -- BASIC QUERIES

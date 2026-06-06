@@ -123,7 +123,7 @@ def test_input_parameters_match_contract(env_vars):
 @pytest.mark.asyncio
 async def test_outputs_validate_against_contract(env_vars, mock_bigquery_client):
     _ = env_vars
-    # Make get_table produce a clean, JSON-serializable type field.
+    # Make get_table_info produce a clean, JSON-serializable type field.
     mock_bigquery_client.get_table.return_value.table_type = "TABLE"
 
     captured = _capture_tools(mock_bigquery_client)
@@ -133,10 +133,11 @@ async def test_outputs_validate_against_contract(env_vars, mock_bigquery_client)
         assert result["success"] is True, f"{name} did not succeed: {result}"
         jsonschema.validate(instance=result, schema=contract.output_schema(name))
 
-    await check("run_query", query="SELECT 1")
+    await check("execute_sql", query="SELECT 1")
     await check("dry_run_query", query="SELECT 1")
-    await check("list_datasets_in_project")
-    await check("get_table", dataset_id="test_dataset1", table_id="t")
+    await check("list_dataset_ids")
+    await check("get_dataset_info", dataset_id="test_dataset1")
+    await check("get_table_info", dataset_id="test_dataset1", table_id="t")
 
     # vector_search discovery populates a module-level cache; clear it around the
     # call so we don't leak state into other tests (and vice versa).

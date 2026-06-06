@@ -1,12 +1,27 @@
 # 🗂️ BigQuery MCP Server
 
-Practical MCP server for navigating BigQuery datasets and tables by LLMs. Designed for larger projects with many datasets/tables, optimized to keep LLM context small while staying fast and safe.
+Practical MCP server for navigating BigQuery datasets and tables by LLMs. Designed for larger projects with many datasets/tables, optimized to keep BigQuery spend low and LLM context small while staying fast and safe.
 
 - **Minimal by default**: list datasets and tables names; fetch details only when asked
 - **Navigate larger projects**: filter by name, request detailed metadata/schemas on demand
 - **Quick table insight**: optional schema, column descriptions and fill-rate to help an agent decide relevance fast
 - **Safe to run**: read-only query execution with guardrails (SELECT/WITH only, comment stripping)
+- **Cost-bounded by design**: metadata-first discovery, a `dry_run_query` cost estimator, and a hard per-query bytes-billed cap
 - **Supports vector search**: Use bigquery as your vector store. See [Vector Search](#-vector-search-optional) section for full setup instructions.
+
+## 🎯 Optimization priority
+
+Every tool and default in this server is designed around one explicit ordering. When choices conflict, earlier goals win:
+
+1. **Minimize BigQuery cost first** — bytes scanned is what you pay for. Discovery (`list_dataset_ids`, `get_dataset_info`, `list_table_ids`, `get_table_info`) is **metadata-only and scans zero bytes**. `dry_run_query` estimates a query's bytes **without running it**. Every real query (`execute_sql`, `get_table_info` sampling, `vector_search`) is capped by `maximum_bytes_billed` (default ~USD 0.50/query). Tool descriptions steer the model to filter on partition/cluster columns, select only needed columns, and use `LIMIT`.
+2. **Then minimize LLM (token) cost** — list tools return **names only by default**, switching to full metadata only when `detailed=true`. Responses are compact, structured JSON so the agent spends few tokens deciding what's relevant before paying for a scan.
+3. **Then minimize latency** — metadata calls run in threads and time out fast; list+search uses a bounded fetch multiplier; embedding-table discovery is cached. Latency is optimized **only where it doesn't increase BigQuery or token cost**.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md#design-priorities-bigquery-cost--llm-cost--latency) for the mechanisms behind each level.
+
+## 🧭 Tool naming
+
+Tool names follow Google's [BigQuery MCP / MCP Toolbox](https://googleapis.github.io/genai-toolbox/resources/tools/bigquery/) conventions so agents already trained on Google's surface feel at home: `execute_sql`, `list_dataset_ids`, `get_dataset_info`, `list_table_ids`, `get_table_info`. Tools that Google does not provide are this project's own additions: `dry_run_query` (pre-flight cost estimate) and `vector_search`.
 
 > **Two implementations, one contract.** This is the Python server. A standalone
 > Node/TypeScript server, [`bigquery-mcp-js`](js/), exposes the **same tools**.
@@ -112,7 +127,7 @@ All configuration can be set via CLI arguments or environment variables. CLI arg
 --max-bytes-billed 109951162777  # Max bytes billed per query job (~USD 0.50/query)
 
 # Table Analysis
---sample-rows 3                 # Sample data rows returned in get_table (default: 3)
+--sample-rows 3                 # Sample data rows returned in get_table_info (default: 3)
 --stats-sample-size 500         # Rows sampled for column fill rate calculations (default: 500)
 
 # Authentication
@@ -143,25 +158,28 @@ See [Vector Search](#-vector-search-optional) section for full setup instruction
 
 ## 🛠️ Tools Overview
 
-This MCP server provides 5 BigQuery tools optimized for LLM efficiency:
+This MCP server provides 7 BigQuery tools, ordered below cheapest-first (no BigQuery cost → bounded cost). Names follow Google's BigQuery MCP conventions.
 
-### 📊 Smart Dataset & Table Discovery
-- **`list_datasets`** - Dual mode: basic (names only) vs detailed (full metadata)
-- **`list_tables`** - Context-aware table browsing with optional schema details
-- **`get_table`** - Complete table analysis with schema and sample data
+### 📊 Discovery — metadata only, **scans zero bytes**
+- **`list_dataset_ids`** - List dataset names in the project. Dual mode: names only (default) vs `detailed=true` for descriptions + table counts.
+- **`get_dataset_info`** - Metadata for one dataset (description, location, labels, table count).
+- **`list_table_ids`** - List table names in a dataset. Dual mode: names only (default) vs `detailed=true` for row counts + sizes.
+- **`get_table_info`** - Schema, column descriptions, per-column fill rates, and a few sample rows so an agent can judge relevance. The fill-rate/sample probes scan only a small bounded sample (capped by `maximum_bytes_billed`).
 
-### 🔍 Safe Query Execution
-- **`run_query`** - Execute SELECT/WITH queries only, with cost tracking, safety validation, and a default per-query billing cap of about USD 0.50. Use LIMIT clause in queries to control result size.
+### 🔍 Querying — cost-bounded
+- **`dry_run_query`** - Estimate the bytes a query would scan **without running it** (zero cost). Run before `execute_sql` on large tables.
+- **`execute_sql`** - Execute SELECT/WITH queries only, with cost tracking, safety validation, and a default per-query billing cap of about USD 0.50. The description steers the model to filter on partitions, avoid `SELECT *`, and use `LIMIT`.
 
 ### 🔮 Vector Search (Optional)
 - **`vector_search`** - Dual-mode tool: discover embedding tables (no query_text) or perform semantic similarity search (with query_text)
 
 **Key Features:**
-- ✅ **Minimal by default** - 70% fewer tokens in basic mode
-- ✅ **Safe queries only** - Blocks all write operations
+- ✅ **Cost-first** - Discovery scans zero bytes; `dry_run_query` previews cost; every query is capped by `maximum_bytes_billed`
+- ✅ **Minimal by default** - names-only list mode means ~70% fewer tokens before you commit to a scan
+- ✅ **Safe queries only** - Blocks all write operations (SELECT/WITH only)
 - ✅ **LLM-optimized** - Returns structured data perfect for AI analysis
 - ✅ **Cost transparent** - Shows bytes processed for each query
-- ✅ **Cost bounded by default** - Caps each query job at about USD 0.50 unless reconfigured
+- ✅ **Google-aligned naming** - Matches the Google BigQuery MCP toolset; own tools added only where Google has no equivalent
 
 ## 🔮 Vector Search (Optional)
 

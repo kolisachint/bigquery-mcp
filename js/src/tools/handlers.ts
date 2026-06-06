@@ -10,18 +10,20 @@ export type ToolArgs = Record<string, unknown>;
 export type ToolHandler = (service: BigQueryService, args: ToolArgs) => Promise<OpOutput>;
 
 export const handlers: Record<string, ToolHandler> = {
-  run_query: (s, a) => s.runQuery({ query: a.query as string }),
+  execute_sql: (s, a) => s.runQuery({ query: a.query as string }),
 
   dry_run_query: (s, a) => s.dryRunQuery({ query: a.query as string }),
 
-  list_datasets_in_project: (s, a) =>
+  list_dataset_ids: (s, a) =>
     s.listDatasets({
       search: a.search as string | undefined,
       detailed: a.detailed as boolean | undefined,
       max_results: (a.max_results ?? null) as number | null,
     }),
 
-  list_tables_in_dataset: (s, a) =>
+  get_dataset_info: (s, a) => s.getDatasetInfo({ dataset_id: a.dataset_id as string }),
+
+  list_table_ids: (s, a) =>
     s.listTables({
       dataset_id: a.dataset_id as string,
       search: a.search as string | undefined,
@@ -29,7 +31,7 @@ export const handlers: Record<string, ToolHandler> = {
       max_results: (a.max_results ?? null) as number | null,
     }),
 
-  get_table: (s, a) =>
+  get_table_info: (s, a) =>
     s.getTable({ dataset_id: a.dataset_id as string, table_id: a.table_id as string }),
 
   vector_search: (s, a) =>

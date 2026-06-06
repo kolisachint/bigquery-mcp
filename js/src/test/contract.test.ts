@@ -95,9 +95,9 @@ test("input shapes build for every tool", async () => {
   }
 });
 
-test("run_query output matches contract", async () => {
+test("execute_sql output matches contract", async () => {
   const out = await makeService().runQuery({ query: "SELECT 1" });
-  validateOutput("run_query", envelope(out));
+  validateOutput("execute_sql", envelope(out));
 });
 
 test("dry_run_query output matches contract", async () => {
@@ -105,24 +105,29 @@ test("dry_run_query output matches contract", async () => {
   validateOutput("dry_run_query", envelope(out));
 });
 
-test("list_datasets_in_project output matches contract (basic + detailed)", async () => {
+test("list_dataset_ids output matches contract (basic + detailed)", async () => {
   const s = makeService();
-  validateOutput("list_datasets_in_project", envelope(await s.listDatasets({})));
-  validateOutput("list_datasets_in_project", envelope(await s.listDatasets({ detailed: true })));
+  validateOutput("list_dataset_ids", envelope(await s.listDatasets({})));
+  validateOutput("list_dataset_ids", envelope(await s.listDatasets({ detailed: true })));
 });
 
-test("list_tables_in_dataset output matches contract (basic + detailed)", async () => {
+test("get_dataset_info output matches contract", async () => {
+  const out = await makeService().getDatasetInfo({ dataset_id: "ds1" });
+  validateOutput("get_dataset_info", envelope(out));
+});
+
+test("list_table_ids output matches contract (basic + detailed)", async () => {
   const s = makeService();
-  validateOutput("list_tables_in_dataset", envelope(await s.listTables({ dataset_id: "ds1" })));
+  validateOutput("list_table_ids", envelope(await s.listTables({ dataset_id: "ds1" })));
   validateOutput(
-    "list_tables_in_dataset",
+    "list_table_ids",
     envelope(await s.listTables({ dataset_id: "ds1", detailed: true })),
   );
 });
 
-test("get_table output matches contract", async () => {
+test("get_table_info output matches contract", async () => {
   const out = await makeService().getTable({ dataset_id: "ds1", table_id: "t1" });
-  validateOutput("get_table", envelope(out));
+  validateOutput("get_table_info", envelope(out));
 });
 
 test("vector_search discovery output matches contract", async () => {

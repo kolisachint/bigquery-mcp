@@ -105,7 +105,7 @@ Examples:
         "--sample-rows",
         type=int,
         dest="sample_rows",
-        help="Sample data rows returned in get_table (default: 3)",
+        help="Sample data rows returned in get_table_info (default: 3)",
     )
 
     parser.add_argument(
