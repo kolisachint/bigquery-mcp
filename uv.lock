@@ -112,8 +112,8 @@ wheels = [
 ]
 
 [[package]]
-name = "bigquery-mcp"
-version = "0.1.0"
+name = "bigquery-mcp-python"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },
