@@ -1,5 +1,5 @@
 [project]
-name = "bigquery-mcp"
+name = "bigquery-mcp-python"
 version = "0.1.1"
 description = "BigQuery MCP server optimized for quick navigation of larger projects and datasets."
 authors = [{ name = "Paul van Oorschot", email = "fpgmaas@gmail.com" }]
@@ -29,13 +29,17 @@ dependencies = [
 # (see contract/tools.json). It is shipped inside the package as
 # bigquery_mcp/contract.json via force-include below.
 
+# The PyPI distribution is `bigquery-mcp-python`; the console command stays
+# `bigquery-mcp`, with a `bigquery-mcp-python` alias so `uvx bigquery-mcp-python`
+# works without `--from`.
 [project.scripts]
 bigquery-mcp = "bigquery_mcp.server:main"
+bigquery-mcp-python = "bigquery_mcp.server:main"
 
 [project.urls]
-Homepage = "https://pvoo.github.io/bigquery-mcp/"
-Repository = "https://github.com/pvoo/bigquery-mcp"
-Documentation = "https://pvoo.github.io/bigquery-mcp/"
+Homepage = "https://github.com/kolisachint/bigquery-mcp"
+Repository = "https://github.com/kolisachint/bigquery-mcp"
+Documentation = "https://github.com/kolisachint/bigquery-mcp"
 
 [dependency-groups]
 dev = [

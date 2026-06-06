@@ -107,9 +107,12 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
       - uses: oven-sh/setup-bun@v2
+      - uses: astral-sh/setup-uv@v7
       - name: Bump version
         id: bump
         run: echo "version=$(bun scripts/bump-version.ts ${{ needs.prepare.outputs.level }})" >>"$GITHUB_OUTPUT"
+      - name: Sync uv lockfile to the bumped version
+        run: uv lock
       - name: Commit and tag
         env:
           VERSION: ${{ steps.bump.outputs.version }}
@@ -159,7 +162,16 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          if [ -z "${NPM_TOKEN}" ]; then
+            echo "::error::NPM_TOKEN secret is empty — set it in repo settings." >&2
+            exit 1
+          fi
+          # Write both a home and project .npmrc so bun publish reliably picks up
+          # the auth token regardless of which it reads first.
+          printf '%s\n' \
+            "registry=https://registry.npmjs.org/" \
+            "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" \
+            "always-auth=true" | tee ~/.npmrc .npmrc >/dev/null
           bun publish --access public
 
   # Create a GitHub Release with generated notes (uses GITHUB_TOKEN, so it does
