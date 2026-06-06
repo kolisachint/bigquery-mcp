@@ -57,9 +57,11 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/bigquery_mcp"]
 
-# Ship the canonical contract inside the package as bigquery_mcp/contract.json.
+# Ship the canonical contract inside the package as bigquery_mcp/contract.json,
+# and the cost-first querying agent skill under bigquery_mcp/skills/.
 [tool.hatch.build.targets.wheel.force-include]
 "contract/tools.json" = "bigquery_mcp/contract.json"
+".agents/skills/bigquery-cost-first-querying/SKILL.md" = "bigquery_mcp/skills/bigquery-cost-first-querying/SKILL.md"
 
 [tool.mypy]
 files = ["src"]
