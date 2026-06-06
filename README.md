@@ -28,6 +28,15 @@ Tool names follow Google's [BigQuery MCP / MCP Toolbox](https://googleapis.githu
 > Both implement a shared contract (`contract/tools.json`); pick whichever fits
 > your runtime. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
+## 🧠 Bundled agent skill
+
+Both packages ship a portable [Agent Skill](https://code.claude.com/docs) that teaches an agent how to drive these tools cost-first (BigQuery bytes → tokens → latency). It captures the decision procedure for choosing the right tool, query-shaping rules, and anti-patterns. The single canonical copy lives at [`.agents/skills/bigquery-cost-first-querying/SKILL.md`](.agents/skills/bigquery-cost-first-querying/SKILL.md) and is bundled into both distributions:
+
+- **PyPI** (`bigquery-mcp`): `bigquery_mcp/skills/bigquery-cost-first-querying/SKILL.md`
+- **npm** (`bigquery-mcp-js`): `dist/skills/bigquery-cost-first-querying/SKILL.md`
+
+Point your agent runtime at the file (or copy it into your project's skills directory) to load the cost-first guidance.
+
 ## Quick Start
 
 **Prerequisites:** Python 3.10+ and [uv](https://github.com/astral-sh/uv) package manager

@@ -12,7 +12,7 @@ and runs under either runtime).
 
 ```bash
 bun install
-bun run build      # bun build -> dist/index.js (deps + contract inlined)
+bun run build      # bun build -> dist/index.js (deps + contract inlined, skill copied)
 bun run test       # bun:test (sqlSafety + contract output validation)
 bun run typecheck  # tsc --noEmit
 ```
@@ -50,3 +50,11 @@ in `contract/tools.json`. Names follow Google's BigQuery MCP conventions;
 
 To add a tool: edit `contract/tools.json`, add a handler in
 `src/tools/handlers.ts`, and run `bun run test`. See the repo's `ARCHITECTURE.md`.
+
+## Bundled agent skill
+
+The build copies the portable cost-first querying
+[Agent Skill](https://code.claude.com/docs) from the repo root
+(`.agents/skills/bigquery-cost-first-querying/SKILL.md`) into
+`dist/skills/bigquery-cost-first-querying/SKILL.md`, so it ships with the npm
+package. See the repo's `ARCHITECTURE.md`.
