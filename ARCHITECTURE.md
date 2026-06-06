@@ -63,6 +63,23 @@ The canonical file lives at `contract/tools.json`.
   `force-include` in `pyproject.toml`; `contract.py` loads the packaged copy when
   installed and the canonical file in a source checkout.
 
+## Bundled agent skill
+
+A portable [Agent Skill](https://code.claude.com/docs),
+`.agents/skills/bigquery-cost-first-querying/SKILL.md`, encodes the cost-first
+decision procedure (the priority ordering below) for invoking the tools. Like the
+contract, it has a single canonical copy at the repo root that both packages
+bundle, so the published artifacts carry it:
+
+- Python ships it in the wheel as
+  `bigquery_mcp/skills/bigquery-cost-first-querying/SKILL.md` via `force-include`
+  in `pyproject.toml` (the sdist already includes it via VCS).
+- JS copies it into `dist/skills/...` at build time
+  (`js/scripts/copy-skill.ts`), shipped through the package's `files: ["dist"]`.
+
+When changing the optimization guidance, edit the canonical skill; both packages
+pick it up at build time.
+
 ## Tools
 
 `list_dataset_ids`, `get_dataset_info`, `list_table_ids`, `get_table_info`,

@@ -6,11 +6,21 @@
     "description": "Every tool returns a JSON object. On success: `success: true`, `data`, plus the tool-specific meta fields described in each tool's `output`. On failure: `success: false` with `error` and `error_type`.",
     "error": {
       "type": "object",
-      "required": ["success", "error", "error_type"],
+      "required": [
+        "success",
+        "error",
+        "error_type"
+      ],
       "properties": {
-        "success": { "const": false },
-        "error": { "type": "string" },
-        "error_type": { "type": "string" }
+        "success": {
+          "const": false
+        },
+        "error": {
+          "type": "string"
+        },
+        "error_type": {
+          "type": "string"
+        }
       },
       "additionalProperties": false
     }
@@ -34,7 +44,10 @@
             "description": "Include descriptions and table counts for each dataset"
           },
           "max_results": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "default": null,
             "description": "(OPTIONAL INTEGER) Maximum number of datasets to return"
           }
@@ -43,16 +56,30 @@
       "output": {
         "type": "object",
         "additionalProperties": true,
-        "required": ["success", "data", "total_available", "total_matching", "returned_count"],
+        "required": [
+          "success",
+          "data",
+          "total_available",
+          "total_matching",
+          "returned_count"
+        ],
         "properties": {
-          "success": { "const": true },
+          "success": {
+            "const": true
+          },
           "data": {
             "type": "array",
             "description": "Array of dataset id strings (basic) or dataset objects (detailed)."
           },
-          "total_available": { "type": "integer" },
-          "total_matching": { "type": "integer" },
-          "returned_count": { "type": "integer" }
+          "total_available": {
+            "type": "integer"
+          },
+          "total_matching": {
+            "type": "integer"
+          },
+          "returned_count": {
+            "type": "integer"
+          }
         }
       }
     },
@@ -62,7 +89,9 @@
       "input": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["dataset_id"],
+        "required": [
+          "dataset_id"
+        ],
         "properties": {
           "dataset_id": {
             "type": "string",
@@ -73,22 +102,69 @@
       "output": {
         "type": "object",
         "additionalProperties": true,
-        "required": ["success", "data"],
+        "required": [
+          "success",
+          "data"
+        ],
         "properties": {
-          "success": { "const": true },
+          "success": {
+            "const": true
+          },
           "data": {
             "type": "object",
-            "required": ["dataset_id", "table_count"],
+            "required": [
+              "dataset_id",
+              "table_count"
+            ],
             "properties": {
-              "dataset_id": { "type": "string" },
-              "friendly_name": { "type": ["string", "null"] },
-              "description": { "type": ["string", "null"] },
-              "location": { "type": ["string", "null"] },
-              "created": { "type": ["string", "null"] },
-              "modified": { "type": ["string", "null"] },
-              "default_table_expiration_ms": { "type": ["integer", "null"] },
-              "labels": { "type": ["object", "null"] },
-              "table_count": { "type": "integer" }
+              "dataset_id": {
+                "type": "string"
+              },
+              "friendly_name": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "location": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "created": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "modified": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "default_table_expiration_ms": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "labels": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "table_count": {
+                "type": "integer"
+              }
             }
           }
         }
@@ -100,7 +176,9 @@
       "input": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["dataset_id"],
+        "required": [
+          "dataset_id"
+        ],
         "properties": {
           "dataset_id": {
             "type": "string",
@@ -117,7 +195,10 @@
             "description": "Include table metadata like row count and size"
           },
           "max_results": {
-            "type": ["integer", "null"],
+            "type": [
+              "integer",
+              "null"
+            ],
             "default": null,
             "description": "(OPTIONAL INTEGER) Maximum number of tables to return"
           }
@@ -135,22 +216,47 @@
           "dataset_context"
         ],
         "properties": {
-          "success": { "const": true },
+          "success": {
+            "const": true
+          },
           "data": {
             "type": "array",
             "description": "Array of table id strings (basic) or table objects (detailed)."
           },
-          "total_available": { "type": "integer" },
-          "total_matching": { "type": "integer" },
-          "returned_count": { "type": "integer" },
+          "total_available": {
+            "type": "integer"
+          },
+          "total_matching": {
+            "type": "integer"
+          },
+          "returned_count": {
+            "type": "integer"
+          },
           "dataset_context": {
             "type": "object",
-            "required": ["dataset_id", "total_table_count"],
+            "required": [
+              "dataset_id",
+              "total_table_count"
+            ],
             "properties": {
-              "dataset_id": { "type": "string" },
-              "description": { "type": ["string", "null"] },
-              "location": { "type": ["string", "null"] },
-              "total_table_count": { "type": "integer" }
+              "dataset_id": {
+                "type": "string"
+              },
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "location": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "total_table_count": {
+                "type": "integer"
+              }
             }
           }
         }
@@ -162,7 +268,10 @@
       "input": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["dataset_id", "table_id"],
+        "required": [
+          "dataset_id",
+          "table_id"
+        ],
         "properties": {
           "dataset_id": {
             "type": "string",
@@ -177,38 +286,117 @@
       "output": {
         "type": "object",
         "additionalProperties": true,
-        "required": ["success", "data"],
+        "required": [
+          "success",
+          "data"
+        ],
         "properties": {
-          "success": { "const": true },
+          "success": {
+            "const": true
+          },
           "data": {
             "type": "object",
-            "required": ["table_path", "type", "schema_with_fill_rates", "sample_data"],
+            "required": [
+              "table_path",
+              "type",
+              "schema_with_fill_rates",
+              "sample_data"
+            ],
             "properties": {
-              "table_path": { "type": "string" },
-              "type": { "type": "string" },
-              "description": { "type": ["string", "null"] },
-              "total_row_count": { "type": ["integer", "null"] },
-              "size_bytes": { "type": ["integer", "null"] },
-              "created": { "type": ["string", "null"] },
-              "modified": { "type": ["string", "null"] },
-              "partition_details": { "type": ["object", "null"] },
-              "primary_key_columns": { "type": ["array", "null"], "items": { "type": "string" } },
+              "table_path": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              },
+              "description": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "total_row_count": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "size_bytes": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "created": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "modified": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "partition_details": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "primary_key_columns": {
+                "type": [
+                  "array",
+                  "null"
+                ],
+                "items": {
+                  "type": "string"
+                }
+              },
               "schema_with_fill_rates": {
                 "type": "array",
                 "items": {
                   "type": "object",
-                  "required": ["name", "type", "fill_rate_percent"],
+                  "required": [
+                    "name",
+                    "type",
+                    "fill_rate_percent"
+                  ],
                   "properties": {
-                    "name": { "type": "string" },
-                    "type": { "type": "string" },
-                    "mode": { "type": ["string", "null"] },
-                    "description": { "type": ["string", "null"] },
-                    "fill_rate_percent": { "type": "number" }
+                    "name": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "description": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "fill_rate_percent": {
+                      "type": "number"
+                    }
                   }
                 }
               },
-              "fill_rate_sample_size": { "type": "integer" },
-              "sample_data": { "type": "array", "items": { "type": "object" } }
+              "fill_rate_sample_size": {
+                "type": "integer"
+              },
+              "sample_data": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              }
             }
           }
         }
@@ -220,7 +408,9 @@
       "input": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["query"],
+        "required": [
+          "query"
+        ],
         "properties": {
           "query": {
             "type": "string",
@@ -231,16 +421,39 @@
       "output": {
         "type": "object",
         "additionalProperties": true,
-        "required": ["success", "data", "total_bytes_processed", "max_bytes_billed"],
+        "required": [
+          "success",
+          "data",
+          "total_bytes_processed",
+          "max_bytes_billed"
+        ],
         "properties": {
-          "success": { "const": true },
+          "success": {
+            "const": true
+          },
           "data": {
             "type": "object",
-            "required": ["total_bytes_processed"],
-            "properties": { "total_bytes_processed": { "type": ["integer", "null"] } }
+            "required": [
+              "total_bytes_processed"
+            ],
+            "properties": {
+              "total_bytes_processed": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            }
           },
-          "total_bytes_processed": { "type": ["integer", "null"] },
-          "max_bytes_billed": { "type": "integer" }
+          "total_bytes_processed": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_bytes_billed": {
+            "type": "integer"
+          }
         }
       }
     },
@@ -250,7 +463,9 @@
       "input": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["query"],
+        "required": [
+          "query"
+        ],
         "properties": {
           "query": {
             "type": "string",
@@ -261,14 +476,38 @@
       "output": {
         "type": "object",
         "additionalProperties": true,
-        "required": ["success", "data", "total_count", "bytes_processed", "max_bytes_billed"],
+        "required": [
+          "success",
+          "data",
+          "total_count",
+          "bytes_processed",
+          "max_bytes_billed"
+        ],
         "properties": {
-          "success": { "const": true },
-          "data": { "type": "array", "items": { "type": "object" } },
-          "total_count": { "type": "integer" },
-          "total_rows_in_result": { "type": "integer" },
-          "bytes_processed": { "type": ["integer", "null"] },
-          "max_bytes_billed": { "type": "integer" }
+          "success": {
+            "const": true
+          },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "total_count": {
+            "type": "integer"
+          },
+          "total_rows_in_result": {
+            "type": "integer"
+          },
+          "bytes_processed": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_bytes_billed": {
+            "type": "integer"
+          }
         }
       }
     },
@@ -309,12 +548,28 @@
       "output": {
         "type": "object",
         "additionalProperties": true,
-        "required": ["success", "data", "mode"],
+        "required": [
+          "success",
+          "data",
+          "mode"
+        ],
         "properties": {
-          "success": { "const": true },
-          "data": { "type": "array" },
-          "mode": { "type": "string", "enum": ["discovery", "search"] },
-          "total_count": { "type": "integer" }
+          "success": {
+            "const": true
+          },
+          "data": {
+            "type": "array"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "discovery",
+              "search"
+            ]
+          },
+          "total_count": {
+            "type": "integer"
+          }
         }
       }
     }

@@ -158,6 +158,11 @@ This server optimizes in a strict order — when goals conflict, the earlier one
 
 See `ARCHITECTURE.md` ("Design priorities") for the mechanisms.
 
+This same ordering is published as a portable agent skill at
+`.agents/skills/bigquery-cost-first-querying/SKILL.md`, which is bundled into both
+the PyPI and npm packages (see ARCHITECTURE.md "Bundled agent skill"). It is the
+single canonical copy — keep it in sync when the optimization guidance changes.
+
 ## Tool naming conventions
 
 Tool names follow Google's BigQuery MCP / MCP Toolbox surface:
