@@ -61,6 +61,20 @@ def _normalize_type(t) -> object:
     return sorted(t) if isinstance(t, list) else t
 
 
+def _split_annotated(annotated) -> tuple[object, object]:
+    """Return (base_type, field_info) from a parameter's type hint.
+
+    Tolerates Python 3.10, whose ``get_type_hints(include_extras=True)`` wraps a
+    parameter that defaults to ``None`` in an implicit ``Optional[...]`` — i.e.
+    ``Optional[Annotated[int | None, Field(...)]]`` instead of the bare
+    ``Annotated[int | None, Field(...)]`` seen on 3.11+. Unwrap to the inner
+    ``Annotated`` before reading its base type and metadata.
+    """
+    if not hasattr(annotated, "__metadata__"):
+        annotated = next(a for a in typing.get_args(annotated) if hasattr(a, "__metadata__"))
+    return annotated.__origin__, annotated.__metadata__[0]
+
+
 def test_contract_is_valid_against_meta_schema():
     """The contract file itself conforms to contract.schema.json."""
     import json
@@ -101,7 +115,7 @@ def test_input_parameters_match_contract(env_vars):
 
         for pname, param in sig.parameters.items():
             annotated = hints[pname]
-            base_type, field_info = typing.get_args(annotated)
+            base_type, field_info = _split_annotated(annotated)
             prop = props[pname]
 
             # Type matches the contract.
