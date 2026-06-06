@@ -1,6 +1,6 @@
 {
   "name": "bigquery-mcp-js",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Standalone Node/TypeScript MCP server for BigQuery. Shares a tool contract with the Python bigquery-mcp server.",
   "license": "MIT",
   "type": "module",

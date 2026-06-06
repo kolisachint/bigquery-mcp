@@ -1,6 +1,6 @@
 [project]
 name = "bigquery-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "BigQuery MCP server optimized for quick navigation of larger projects and datasets."
 authors = [{ name = "Paul van Oorschot", email = "fpgmaas@gmail.com" }]
 readme = "README.md"
