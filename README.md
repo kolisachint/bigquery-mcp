@@ -32,7 +32,7 @@ Tool names follow Google's [BigQuery MCP / MCP Toolbox](https://googleapis.githu
 
 Both packages ship a portable [Agent Skill](https://code.claude.com/docs) that teaches an agent how to drive these tools cost-first (BigQuery bytes → tokens → latency). It captures the decision procedure for choosing the right tool, query-shaping rules, and anti-patterns. The single canonical copy lives at [`.agents/skills/bigquery-cost-first-querying/SKILL.md`](.agents/skills/bigquery-cost-first-querying/SKILL.md) and is bundled into both distributions:
 
-- **PyPI** (`bigquery-mcp`): `bigquery_mcp/skills/bigquery-cost-first-querying/SKILL.md`
+- **PyPI** (`bigquery-mcp-python`): `bigquery_mcp/skills/bigquery-cost-first-querying/SKILL.md`
 - **npm** (`bigquery-mcp-js`): `dist/skills/bigquery-cost-first-querying/SKILL.md`
 
 Point your agent runtime at the file (or copy it into your project's skills directory) to load the cost-first guidance.
@@ -49,7 +49,7 @@ Point your agent runtime at the file (or copy it into your project's skills dire
 gcloud auth application-default login
 
 # 2. Run server
-uvx bigquery-mcp --project YOUR_PROJECT --location US
+uvx bigquery-mcp-python --project YOUR_PROJECT --location US
 ```
 
 **Option 2: Clone locally (development setup)**
@@ -77,7 +77,7 @@ Simplest setup using the published PyPI package:
     "bigquery": {
       "command": "uvx",
       "args": [
-        "bigquery-mcp",
+        "bigquery-mcp-python",
         "--project", "your-project-id",
         "--location", "US"
      ]
@@ -112,7 +112,7 @@ git clone https://github.com/pvoo/bigquery-mcp.git
 
 ```bash
 # Test with MCP inspector
-npx @modelcontextprotocol/inspector uvx bigquery-mcp --project YOUR_PROJECT --location US
+npx @modelcontextprotocol/inspector uvx bigquery-mcp-python --project YOUR_PROJECT --location US
 ```
 
 ## 🔧 Configuration Options
@@ -247,7 +247,7 @@ Once you have embeddings set up, configure the MCP server:
     "bigquery": {
       "command": "uvx",
       "args": [
-        "bigquery-mcp",
+        "bigquery-mcp-python",
         "--project", "your-project",
         "--location", "US",
         "--embedding-model", "your-project.your_dataset.text_embedding_model",
