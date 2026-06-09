@@ -631,4 +631,3 @@ def register_tools(  # noqa: C901
 
         except (GoogleCloudError, Exception) as e:
             return _create_error_response(e)
-
