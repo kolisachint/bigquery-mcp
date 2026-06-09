@@ -7,35 +7,39 @@ Practical MCP server for navigating BigQuery datasets and tables by LLMs. Design
 - **Quick table insight**: optional schema, column descriptions and fill-rate to help an agent decide relevance fast
 - **Safe to run**: read-only query execution with guardrails (SELECT/WITH only, comment stripping)
 - **Cost-bounded by design**: metadata-first discovery, a `dry_run_query` cost estimator, and a hard per-query bytes-billed cap
-- **Supports vector search**: Use bigquery as your vector store. See [Vector Search](#-vector-search-optional) section for full setup instructions.
 
 ## 🎯 Optimization priority
 
 Every tool and default in this server is designed around one explicit ordering. When choices conflict, earlier goals win:
 
-1. **Minimize BigQuery cost first** — bytes scanned is what you pay for. Discovery (`list_dataset_ids`, `get_dataset_info`, `list_table_ids`, `get_table_info`) is **metadata-only and scans zero bytes**. `dry_run_query` estimates a query's bytes **without running it**. Every real query (`execute_sql`, `get_table_info` sampling, `vector_search`) is capped by `maximum_bytes_billed` (default ~USD 0.50/query). Tool descriptions steer the model to filter on partition/cluster columns, select only needed columns, and use `LIMIT`.
+1. **Minimize BigQuery cost first** — bytes scanned is what you pay for. Discovery (`list_dataset_ids`, `get_dataset_info`, `list_table_ids`, `get_table_info`) is **metadata-only and scans zero bytes**. `dry_run_query` estimates a query's bytes **without running it**. Every real query (`execute_sql`, `get_table_info` sampling) is capped by `maximum_bytes_billed` (default ~USD 0.50/query). Tool descriptions steer the model to filter on partition/cluster columns, select only needed columns, and use `LIMIT`.
 2. **Then minimize LLM (token) cost** — list tools return **names only by default**, switching to full metadata only when `detailed=true`. Responses are compact, structured JSON so the agent spends few tokens deciding what's relevant before paying for a scan.
-3. **Then minimize latency** — metadata calls run in threads and time out fast; list+search uses a bounded fetch multiplier; embedding-table discovery is cached. Latency is optimized **only where it doesn't increase BigQuery or token cost**.
+3. **Then minimize latency** — metadata calls run in threads and time out fast; list+search uses a bounded fetch multiplier. Latency is optimized **only where it doesn't increase BigQuery or token cost**.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md#design-priorities-bigquery-cost--llm-cost--latency) for the mechanisms behind each level.
 
 ## 🧭 Tool naming
 
-Tool names follow Google's [BigQuery MCP / MCP Toolbox](https://googleapis.github.io/genai-toolbox/resources/tools/bigquery/) conventions so agents already trained on Google's surface feel at home: `execute_sql`, `list_dataset_ids`, `get_dataset_info`, `list_table_ids`, `get_table_info`. Tools that Google does not provide are this project's own additions: `dry_run_query` (pre-flight cost estimate) and `vector_search`.
+Tool names follow Google's [BigQuery MCP / MCP Toolbox](https://googleapis.github.io/genai-toolbox/resources/tools/bigquery/) conventions so agents already trained on Google's surface feel at home: `execute_sql`, `list_dataset_ids`, `get_dataset_info`, `list_table_ids`, `get_table_info`. The only tool with no Google equivalent is this project's own addition: `dry_run_query` (pre-flight cost estimate).
 
 > **Two implementations, one contract.** This is the Python server. A standalone
 > Node/TypeScript server, [`bigquery-mcp-js`](js/), exposes the **same tools**.
 > Both implement a shared contract (`contract/tools.json`); pick whichever fits
 > your runtime. See [ARCHITECTURE.md](ARCHITECTURE.md).
 
-## 🧠 Bundled agent skill
+## 🧠 Bundled agent skills & agents
 
-Both packages ship a portable [Agent Skill](https://code.claude.com/docs) that teaches an agent how to drive these tools cost-first (BigQuery bytes → tokens → latency). It captures the decision procedure for choosing the right tool, query-shaping rules, and anti-patterns. The single canonical copy lives at [`.agents/skills/bigquery-cost-first-querying/SKILL.md`](.agents/skills/bigquery-cost-first-querying/SKILL.md) and is bundled into both distributions:
+Both packages ship portable [Agent Skills](https://code.claude.com/docs) and ready-to-use agent definitions under [`.agents/`](.agents/). Each has a single canonical copy at the repo root that is bundled into both the PyPI and npm distributions (Python under `bigquery_mcp/skills/…` and `bigquery_mcp/agents/…`; npm under `dist/skills/…` and `dist/agents/…`).
 
-- **PyPI** (`bigquery-mcp-python`): `bigquery_mcp/skills/bigquery-cost-first-querying/SKILL.md`
-- **npm** (`bigquery-mcp-js`): `dist/skills/bigquery-cost-first-querying/SKILL.md`
+**Skills** ([`.agents/skills/`](.agents/skills/)):
+- **`bigquery-cost-first-querying`** — teaches an agent to drive these tools cost-first (BigQuery bytes → tokens → latency): tool-selection procedure, query-shaping rules, and anti-patterns. This is the authoritative cost guidance.
+- **`secure-context-reducer`** — reduces retrieved data to a compact, prompt-safe fact map with GDPR-style data minimization and PCI-DSS boundaries (no cardholder data in the prompt path); defers the BigQuery half to the cost-first skill.
 
-Point your agent runtime at the file (or copy it into your project's skills directory) to load the cost-first guidance.
+**Agents** ([`.agents/agents/`](.agents/agents/)):
+- **`bigquery-table-analyst`** — explores datasets/tables and reports schemas, fill rates, and relationships, cost-first.
+- **`cost-first-compliant-agent`** — queries cost-first, runs results through `secure-context-reducer`, then reasons over the safe facts. Each agent declares the skills it obeys via a `required-skills` frontmatter field.
+
+Point your agent runtime at the files (or copy them into your project's skills/agents directories) to load the guidance.
 
 ## Quick Start
 
@@ -52,10 +56,14 @@ gcloud auth application-default login
 uvx bigquery-mcp-python --project YOUR_PROJECT --location US
 ```
 
+> **Package name vs. command:** the PyPI package is **`bigquery-mcp-python`** (the
+> `uvx`/`pip install` target); the command it installs is **`bigquery-mcp`**.
+> `pip install bigquery-mcp` will **not** find this project.
+
 **Option 2: Clone locally (development setup)**
 ```bash
 # 1. Clone and setup
-git clone https://github.com/pvoo/bigquery-mcp.git
+git clone https://github.com/kolisachint/bigquery-mcp.git
 cd bigquery-mcp
 
 # 2. Configure environment
@@ -90,7 +98,7 @@ Simplest setup using the published PyPI package:
 **Option 2: Local clone (for development)**
 ```bash
 # Clone first
-git clone https://github.com/pvoo/bigquery-mcp.git
+git clone https://github.com/kolisachint/bigquery-mcp.git
 ```
 
 ```json
@@ -157,17 +165,9 @@ export BIGQUERY_SAMPLE_ROWS_FOR_STATS=500
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/key.json
 ```
 
-### Vector Search Configuration
-See [Vector Search](#-vector-search-optional) section for full setup instructions.
-```bash
---embedding-model project.dataset.model
---embedding-tables dataset.table1 dataset.table2
---distance-type COSINE
-```
-
 ## 🛠️ Tools Overview
 
-This MCP server provides 7 BigQuery tools, ordered below cheapest-first (no BigQuery cost → bounded cost). Names follow Google's BigQuery MCP conventions.
+This MCP server provides 6 BigQuery tools, ordered below cheapest-first (no BigQuery cost → bounded cost). Names follow Google's BigQuery MCP conventions.
 
 ### 📊 Discovery — metadata only, **scans zero bytes**
 - **`list_dataset_ids`** - List dataset names in the project. Dual mode: names only (default) vs `detailed=true` for descriptions + table counts.
@@ -179,9 +179,6 @@ This MCP server provides 7 BigQuery tools, ordered below cheapest-first (no BigQ
 - **`dry_run_query`** - Estimate the bytes a query would scan **without running it** (zero cost). Run before `execute_sql` on large tables.
 - **`execute_sql`** - Execute SELECT/WITH queries only, with cost tracking, safety validation, and a default per-query billing cap of about USD 0.50. The description steers the model to filter on partitions, avoid `SELECT *`, and use `LIMIT`.
 
-### 🔮 Vector Search (Optional)
-- **`vector_search`** - Dual-mode tool: discover embedding tables (no query_text) or perform semantic similarity search (with query_text)
-
 **Key Features:**
 - ✅ **Cost-first** - Discovery scans zero bytes; `dry_run_query` previews cost; every query is capped by `maximum_bytes_billed`
 - ✅ **Minimal by default** - names-only list mode means ~70% fewer tokens before you commit to a scan
@@ -190,117 +187,12 @@ This MCP server provides 7 BigQuery tools, ordered below cheapest-first (no BigQ
 - ✅ **Cost transparent** - Shows bytes processed for each query
 - ✅ **Google-aligned naming** - Matches the Google BigQuery MCP toolset; own tools added only where Google has no equivalent
 
-## 🔮 Vector Search (Optional)
-
-Enable semantic similarity search using BigQuery vector embeddings.
-
-### Prerequisites: Setting Up Embeddings in BigQuery
-
-Before using vector search, you need an embedding model and tables with embeddings:
-
-**Step 1: Create a Vertex AI connection** (one-time setup)
-```sql
--- In BigQuery console or bq command line
--- This creates a connection to Vertex AI for generating embeddings
-CREATE EXTERNAL CONNECTION `your-project.your-region.vertex-ai`
-  OPTIONS (
-    endpoint = 'https://your-region-aiplatform.googleapis.com',
-    type = 'CLOUD_RESOURCE'
-  );
-```
-
-**Step 2: Create the embedding model**
-```sql
-CREATE OR REPLACE MODEL `your-project.your_dataset.text_embedding_model`
-REMOTE WITH CONNECTION `your-project.your-region.vertex-ai`
-OPTIONS (ENDPOINT = 'text-embedding-005');
-```
-
-**Step 3: Add embeddings to your table**
-```sql
--- Add embedding column to existing table
-ALTER TABLE `your-project.your_dataset.products`
-ADD COLUMN IF NOT EXISTS embedding ARRAY<FLOAT64>;
-
--- Generate embeddings for your text data
-UPDATE `your-project.your_dataset.products` t
-SET embedding = (
-  SELECT ml_generate_embedding_result
-  FROM ML.GENERATE_EMBEDDING(
-    MODEL `your-project.your_dataset.text_embedding_model`,
-    (SELECT t.name AS content),
-    STRUCT(TRUE AS flatten_json_output)
-  )
-)
-WHERE embedding IS NULL;
-```
-
-> See [BigQuery text embeddings documentation](https://cloud.google.com/bigquery/docs/generate-text-embedding) for detailed setup instructions and connection permissions.
-
-### MCP Configuration for Vector Search
-
-Once you have embeddings set up, configure the MCP server:
-
-```json
-{
-  "mcpServers": {
-    "bigquery": {
-      "command": "uvx",
-      "args": [
-        "bigquery-mcp-python",
-        "--project", "your-project",
-        "--location", "US",
-        "--embedding-model", "your-project.your_dataset.text_embedding_model",
-        "--embedding-tables", "your_dataset.products", "your_dataset.documents"
-      ]
-    }
-  }
-}
-```
-
-### Configuration Reference
-
-| CLI Argument | Environment Variable | Default | Description |
-|--------------|---------------------|---------|-------------|
-| `--embedding-model` | `BIGQUERY_EMBEDDING_MODEL` | - | **Required.** Full path to embedding model (`project.dataset.model`). Validated on startup. |
-| `--embedding-tables` | `BIGQUERY_EMBEDDING_TABLES` | - | Tables with embedding columns (skips auto-discovery) |
-| `--vector-column-contains` | `BIGQUERY_EMBEDDING_COLUMN_CONTAINS` | `embedding` | Pattern for finding embedding columns (column name must contain this) |
-| `--distance-type` | `BIGQUERY_DISTANCE_TYPE` | `COSINE` | Distance metric: `COSINE`, `EUCLIDEAN`, `DOT_PRODUCT` |
-| `--no-vector-search` | `BIGQUERY_VECTOR_SEARCH_ENABLED=false` | enabled | Disable vector search tools |
-
-### Usage Examples
-
-**Discovery mode** - find tables with embeddings:
-```json
-{
-  "query_text": ""
-}
-```
-
-**Search mode** - semantic similarity search:
-```json
-{
-  "query_text": "solenoid valve for water",
-  "table_path": "my_dataset.products",
-  "top_k": "10",
-  "select_columns": "name,description,price"
-}
-```
-
-### Required Permissions
-
-| Role | Purpose |
-|------|---------|
-| `roles/bigquery.dataViewer` | Read tables and models |
-| `roles/bigquery.jobUser` | Run BigQuery jobs |
-| `roles/bigquery.metadataViewer` | Auto-discover embedding tables (optional) |
-
 ## 🏗️ Development Setup
 
 ### Local Development
 ```bash
 # Clone and setup
-git clone https://github.com/pvoo/bigquery-mcp.git
+git clone https://github.com/kolisachint/bigquery-mcp.git
 cd bigquery-mcp
 make install  # Setup environment + pre-commit hooks
 
@@ -376,7 +268,7 @@ LIMIT 20
 **Setup:**
 ```bash
 # 1. Clone and configure
-git clone https://github.com/pvoo/bigquery-mcp.git
+git clone https://github.com/kolisachint/bigquery-mcp.git
 cd bigquery-mcp
 
 # 2. Setup environment
@@ -418,7 +310,7 @@ We welcome contributions! Looking forward to your feedback for improvements.
 **Quick Start:**
 ```bash
 # Fork on GitHub, then:
-git clone https://github.com/yourusername/bigquery-mcp.git
+git clone https://github.com/kolisachint/bigquery-mcp.git
 cd bigquery-mcp
 make install  # Setup dev environment
 make check    # Verify everything works
@@ -436,7 +328,7 @@ make check    # Quality checks
 - Ensure all quality checks pass
 
 **Found an issue or have a feature request?**
-- 🐛 **Bug reports:** [Open an issue](https://github.com/pvoo/bigquery-mcp/issues)
+- 🐛 **Bug reports:** [Open an issue](https://github.com/kolisachint/bigquery-mcp/issues)
 - 🔧 **Code improvements:** Submit a pull request
 - 📖 **Documentation:** See [CONTRIBUTING.md](CONTRIBUTING.md)
 

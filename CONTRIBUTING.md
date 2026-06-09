@@ -9,7 +9,7 @@ You can contribute in many ways:
 
 ## Report Bugs
 
-Report bugs at https://github.com/pvoo/bigquery-mcp/issues
+Report bugs at https://github.com/kolisachint/bigquery-mcp/issues
 
 If you are reporting a bug, please include:
 
@@ -48,9 +48,8 @@ rules. New tools must respect all three:
    tool names where an equivalent exists (`execute_sql`, `list_dataset_ids`,
    `get_dataset_info`, `list_table_ids`, `get_table_info`, and the advanced
    `forecast`, `analyze_contribution`, `search_catalog`, `ask_data_insights`).
-   Only invent a name when Google has none (e.g. `dry_run_query`,
-   `vector_search`). Renaming a tool is a breaking change — bump the contract's
-   major version.
+   Only invent a name when Google has none (e.g. `dry_run_query`). Renaming a
+   tool is a breaking change — bump the contract's major version.
 
 ## Write Documentation
 
@@ -58,7 +57,7 @@ bigquery-mcp could always use more documentation, whether as part of the officia
 
 ## Submit Feedback
 
-The best way to send feedback is to file an issue at https://github.com/pvoo/bigquery-mcp/issues.
+The best way to send feedback is to file an issue at https://github.com/kolisachint/bigquery-mcp/issues.
 
 If you are proposing a new feature:
 

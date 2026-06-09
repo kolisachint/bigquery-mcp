@@ -33,6 +33,9 @@ htmlcov/
 *.log
 *.md
 !README.md
+# Keep the bundled agent skills/agents (override the *.md rule above).
+!.agents/
+!.agents/**
 examples/
 docs/
 
@@ -54,5 +57,5 @@ Makefile
 
 # Other
 CONTRIBUTING.md
-CLAUDE.md
+AGENTS.md
 LICENSE

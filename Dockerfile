@@ -18,5 +18,5 @@ COPY . /app
 # Sync the project
 RUN uv sync --frozen
 
-# Run the MCP server
-CMD ["uv", "run", "python", "-m", "bigquery_mcp.server"]
+# Run the MCP server via the console script entry point.
+CMD ["uv", "run", "bigquery-mcp"]

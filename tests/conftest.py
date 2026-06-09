@@ -81,7 +81,6 @@ def env_vars():
     test_env = {
         "GCP_PROJECT_ID": "test-project",
         "BIGQUERY_LOCATION": "US",
-        "BIGQUERY_MAX_RESULTS": "20",
         "BIGQUERY_LIST_MAX_RESULTS": "500",
         "BIGQUERY_LIST_MAX_RESULTS_DETAILED": "25",
         "BIGQUERY_SAMPLE_ROWS": "3",

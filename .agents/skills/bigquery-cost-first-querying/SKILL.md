@@ -3,24 +3,17 @@ name: bigquery-cost-first-querying
 description: >-
   Cost-first decision procedure for invoking the BigQuery MCP tools
   (list_dataset_ids, get_dataset_info, list_table_ids, get_table_info,
-  dry_run_query, execute_sql, vector_search). Use whenever you are about to
-  explore a BigQuery project, inspect datasets/tables/schemas, or run SQL
-  through this MCP server. Enforces a strict optimization order: minimize
-  BigQuery bytes scanned first, then minimize LLM tokens, then minimize
-  latency — never trading a cheaper goal for a more expensive one.
+  dry_run_query, execute_sql). Use whenever you are about to explore a BigQuery
+  project, inspect datasets/tables/schemas, or run SQL through this MCP server.
+  Enforces a strict optimization order: minimize BigQuery bytes scanned first,
+  then minimize LLM tokens, then minimize latency — never trading a cheaper
+  goal for a more expensive one.
 license: MIT
 metadata:
   version: 1.0.0
   standard: agent-skills
   applies-to: bigquery-mcp, bigquery-mcp-js
-allowed-tools:
-  - mcp__bigquery__list_dataset_ids
-  - mcp__bigquery__get_dataset_info
-  - mcp__bigquery__list_table_ids
-  - mcp__bigquery__get_table_info
-  - mcp__bigquery__dry_run_query
-  - mcp__bigquery__execute_sql
-  - mcp__bigquery__vector_search
+allowed-tools: mcp__bigquery__list_dataset_ids, mcp__bigquery__get_dataset_info, mcp__bigquery__list_table_ids, mcp__bigquery__get_table_info, mcp__bigquery__dry_run_query, mcp__bigquery__execute_sql
 ---
 
 # BigQuery cost-first querying
@@ -56,9 +49,8 @@ running a query**.
   - Always add a `LIMIT` when sampling or exploring.
   - Avoid re-scanning: prefer one well-shaped query over several probing ones.
 - **Respect the hard cap.** Every real job (`execute_sql`, the `get_table_info`
-  fill-rate/sample probes, `vector_search`) runs under `maximum_bytes_billed`.
-  If a job is rejected by the cap, that is a signal to scan less — not to raise
-  the cap.
+  fill-rate/sample probes) runs under `maximum_bytes_billed`. If a job is
+  rejected by the cap, that is a signal to scan less — not to raise the cap.
 
 ## Priority 2 — Minimize LLM tokens
 
@@ -79,10 +71,9 @@ can be while still answering the question.
 
 Only after (1) and (2) are satisfied. Latency is optimized inside the server
 (worker-thread metadata calls with short timeouts, bounded search-fetch
-multipliers, cached embedding-table discovery). Do **not** try to beat it by
-scanning more bytes (e.g. one big `SELECT *` instead of metadata + a narrow
-query) or by requesting `detailed=true` everywhere "to save a round trip."
-A second cheap call beats one expensive call.
+multipliers). Do **not** try to beat it by scanning more bytes (e.g. one big
+`SELECT *` instead of metadata + a narrow query) or by requesting `detailed=true`
+everywhere "to save a round trip." A second cheap call beats one expensive call.
 
 ## Decision procedure
 
@@ -95,9 +86,7 @@ Walk this top-down and stop at the first step that answers the question:
    `detailed=true` only for shortlisted tables.
 4. **Need schema, column fill rates, or sample rows?** → `get_table_info`
    (bounded sample scan).
-5. **Semantic / embedding search?** → `vector_search` (discovers embedding
-   tables via cached metadata, or runs the search).
-6. **About to run SQL?** → `dry_run_query` to size it. Acceptable estimate?
+5. **About to run SQL?** → `dry_run_query` to size it. Acceptable estimate?
    → `execute_sql` (SELECT/WITH only). Too large? → narrow and dry-run again.
 
 ## Quick reference
@@ -110,7 +99,6 @@ Walk this top-down and stop at the first step that answers the question:
 | `get_table_info` | bounded sample | Schema, fill rates, sample rows |
 | `dry_run_query` | 0 | Estimate a query's cost before running |
 | `execute_sql` | capped | Run a read-only `SELECT`/`WITH` |
-| `vector_search` | capped (or 0 to discover) | Semantic / embedding search |
 
 ## Anti-patterns
 

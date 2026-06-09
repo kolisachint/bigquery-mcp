@@ -79,7 +79,6 @@ class TestBigQueryMCPIntegration:
             "get_dataset_info",
             "list_table_ids",
             "get_table_info",
-            "vector_search",
         }
         assert expected_tools == tool_names
         assert len(tools) == len(expected_tools)

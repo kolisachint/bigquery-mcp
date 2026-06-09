@@ -15,7 +15,7 @@ import jsonschema
 import pytest
 
 from bigquery_mcp import contract
-from bigquery_mcp.bigquery_tools import clear_embedding_tables_cache, register_tools
+from bigquery_mcp.bigquery_tools import register_tools
 
 
 def _capture_tools(mock_client, *, location="US"):
@@ -150,13 +150,8 @@ async def test_outputs_validate_against_contract(env_vars, mock_bigquery_client)
     await check("execute_sql", query="SELECT 1")
     await check("dry_run_query", query="SELECT 1")
     await check("list_dataset_ids")
+    await check("list_dataset_ids", detailed=True)
     await check("get_dataset_info", dataset_id="test_dataset1")
+    await check("list_table_ids", dataset_id="test_dataset1")
+    await check("list_table_ids", dataset_id="test_dataset1", detailed=True)
     await check("get_table_info", dataset_id="test_dataset1", table_id="t")
-
-    # vector_search discovery populates a module-level cache; clear it around the
-    # call so we don't leak state into other tests (and vice versa).
-    clear_embedding_tables_cache()
-    try:
-        await check("vector_search")  # discovery mode (empty query_text)
-    finally:
-        clear_embedding_tables_cache()

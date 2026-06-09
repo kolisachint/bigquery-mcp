@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to coding agents (Claude Code, and other AGENTS.md-aware tools) when working with code in this repository.
 
 ## Project Overview
 
@@ -92,15 +92,12 @@ Required:
 
 Optional:
 - `GOOGLE_APPLICATION_CREDENTIALS` - Path to service account JSON key
-- `BIGQUERY_MAX_RESULTS` - Default max results for queries (default: 20)
-- `BIGQUERY_LIST_MAX_RESULTS` - Default max results for list operations (default: 500)
-- `BIGQUERY_SAMPLE_ROWS` - Sample rows returned in table details (default: 3)
 - `BIGQUERY_ALLOWED_DATASETS` - Comma-separated list of allowed datasets to show
-
-Vector Search (optional):
-- `BIGQUERY_VECTOR_SEARCH_ENABLED` - Enable/disable vector search tools (default: true)
-- `BIGQUERY_EMBEDDING_MODEL` - Default embedding model for vector_search
-- `BIGQUERY_EMBEDDING_COLUMN_CONTAINS` - Column pattern for vector_search discovery mode (default: embedding)
+- `BIGQUERY_LIST_MAX_RESULTS` - Max results for basic list operations (default: 500)
+- `BIGQUERY_LIST_MAX_RESULTS_DETAILED` - Max results for detailed list operations (default: 25)
+- `BIGQUERY_SAMPLE_ROWS` - Sample data rows in table details (default: 3)
+- `BIGQUERY_SAMPLE_ROWS_FOR_STATS` - Rows sampled for per-column fill rates (default: 500)
+- `BIGQUERY_MAX_BYTES_BILLED` - Max bytes billed per query job (default: 109951162777, ~USD 0.50)
 
 ## Code Style & Quality
 
@@ -118,7 +115,6 @@ Vector Search (optional):
 - **Safety tests**: SQL validation in tests/test_safety.py
 - **Integration tests**: Real BigQuery interactions in tests/test_integration.py
 - **Authentication tests**: Credential handling in tests/test_auth.py
-- **Vector search tests**: Vector search tools in tests/test_vector_search.py
 - **MCP client**: Helper for testing MCP protocol in tests/mcp_client.py
 
 ## Project Structure
@@ -138,7 +134,6 @@ bigquery-mcp/
 │   ├── test_server.py    # Server functionality tests
 │   ├── test_safety.py    # Query safety validation tests
 │   ├── test_auth.py      # Authentication tests
-│   ├── test_vector_search.py # Vector search tools tests
 │   └── test_integration.py # Real BigQuery integration tests
 ├── examples/              # Usage examples and demos
 ├── Dockerfile            # Container deployment
@@ -160,16 +155,44 @@ See `ARCHITECTURE.md` ("Design priorities") for the mechanisms.
 
 This same ordering is published as a portable agent skill at
 `.agents/skills/bigquery-cost-first-querying/SKILL.md`, which is bundled into both
-the PyPI and npm packages (see ARCHITECTURE.md "Bundled agent skill"). It is the
-single canonical copy — keep it in sync when the optimization guidance changes.
+the PyPI and npm packages (see ARCHITECTURE.md "Bundled agent skills & agents").
+It is the single canonical copy — keep it in sync when the optimization guidance
+changes.
+
+## Bundled agents & skills
+
+Portable agent skills and agent definitions live under `.agents/` and are bundled
+into both packages (Python `force-include` in `pyproject.toml`; JS
+`js/scripts/copy-agent-assets.ts`). All four are canonical single copies — edit
+them in `.agents/` only.
+
+**Skills** (`.agents/skills/<name>/SKILL.md`):
+- `bigquery-cost-first-querying` — authoritative cost-first tool-selection
+  procedure. Everything else defers to it; do not restate it elsewhere.
+- `secure-context-reducer` — GDPR/PCI-DSS data minimization that reduces
+  retrieved data to a compact, prompt-safe fact map; defers the BigQuery half to
+  the cost-first skill.
+
+**Agents** (`.agents/agents/<name>.md`):
+- `bigquery-table-analyst` — dataset/table exploration, cost-first.
+- `cost-first-compliant-agent` — query cost-first → reduce via
+  `secure-context-reducer` → reason over safe facts.
+
+**Frontmatter conventions:**
+- Skills: `name`, `description`, `license`, `metadata` (version/standard/
+  applies-to), `allowed-tools` (comma-separated `mcp__bigquery__*` tool names).
+- Agents: `name`, `description`, `tools` (comma-separated), `model`, `color`, and
+  `required-skills` (comma-separated skill names the agent must obey). Cost-first
+  policy lives in the skill; agents reference it via `required-skills` rather than
+  duplicating the procedure.
 
 ## Tool naming conventions
 
 Tool names follow Google's BigQuery MCP / MCP Toolbox surface:
 `execute_sql`, `list_dataset_ids`, `get_dataset_info`, `list_table_ids`,
 `get_table_info`. When adding a tool that maps to a Google capability, match its
-name. Only invent a name when Google has no equivalent — current own tools are
-`dry_run_query` and `vector_search`. Google's advanced tools (`forecast`,
+name. Only invent a name when Google has no equivalent — the current own tool is
+`dry_run_query`. Google's advanced tools (`forecast`,
 `analyze_contribution`, `search_catalog`, `ask_data_insights`) are not yet
 implemented; if added, use those exact names.
 
@@ -181,7 +204,6 @@ implemented; if added, use those exact names.
 - **get_table_info**: Schema + metadata + per-column fill rates + sample rows (bounded sample scan)
 - **dry_run_query**: Estimates bytes scanned without running the query (zero cost)
 - **execute_sql**: Executes SELECT-only queries with safety validation and a bytes-billed cap
-- **vector_search**: Discovers embedding tables (cached, via INFORMATION_SCHEMA) or performs semantic search using VECTOR_SEARCH + ML.GENERATE_EMBEDDING
 
 ## Development Workflow
 

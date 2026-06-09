@@ -38,7 +38,7 @@ export async function runServer(config: Config): Promise<void> {
   );
 
   const server = new McpServer({ name: "bigquery-mcp", version: "0.1.0" });
-  registerTools(server, service, config);
+  registerTools(server, service);
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

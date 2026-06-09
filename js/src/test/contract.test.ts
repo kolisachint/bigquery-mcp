@@ -61,11 +61,7 @@ const ajv = new Ajv({ allErrors: true, strict: false });
 
 function makeService() {
   const base = loadConfig({ projectId: "p", location: "US" });
-  return new BigQueryService({
-    ...base,
-    embeddingModel: "p.ds.model",
-    embeddingTables: ["ds.products"],
-  });
+  return new BigQueryService(base);
 }
 
 function envelope(out: { data: unknown; meta?: Record<string, unknown> }) {
@@ -128,14 +124,4 @@ test("list_table_ids output matches contract (basic + detailed)", async () => {
 test("get_table_info output matches contract", async () => {
   const out = await makeService().getTable({ dataset_id: "ds1", table_id: "t1" });
   validateOutput("get_table_info", envelope(out));
-});
-
-test("vector_search discovery output matches contract", async () => {
-  const out = await makeService().vectorSearch({});
-  validateOutput("vector_search", envelope(out));
-});
-
-test("vector_search search output matches contract", async () => {
-  const out = await makeService().vectorSearch({ query_text: "hello", table_path: "ds.products" });
-  validateOutput("vector_search", envelope(out));
 });

@@ -31,7 +31,7 @@ asserts the shipped copy matches this canonical file.
 - **Tool names follow Google's [BigQuery MCP / MCP Toolbox](https://googleapis.github.io/genai-toolbox/resources/tools/bigquery/)
   surface**: `execute_sql`, `list_dataset_ids`, `get_dataset_info`,
   `list_table_ids`, `get_table_info`. Add your own name only when Google has no
-  equivalent (currently `dry_run_query`, `vector_search`).
+  equivalent (currently `dry_run_query`).
 - **Tools are ordered cheapest-first**, reflecting the optimization priority:
   minimize BigQuery cost (bytes scanned) → LLM/token cost → latency. Keep that
   order when adding tools, and note a tool's cost profile in its `summary`.

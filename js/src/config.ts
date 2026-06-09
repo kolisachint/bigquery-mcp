@@ -17,12 +17,6 @@ export interface Config {
   sampleRowsForStats: number;
   maxRecommendedResults: number;
   maxBytesBilled: number;
-
-  vectorSearchEnabled: boolean;
-  embeddingModel?: string;
-  embeddingColumnContains: string;
-  embeddingTables?: string[];
-  distanceType: "COSINE" | "EUCLIDEAN" | "DOT_PRODUCT";
 }
 
 export const DEFAULTS = {
@@ -33,8 +27,6 @@ export const DEFAULTS = {
   maxRecommendedResults: 1000,
   // ~0.50 USD/query at 5 USD per TiB scanned.
   maxBytesBilled: 109_951_162_777,
-  embeddingColumnContains: "embedding",
-  distanceType: "COSINE" as const,
 };
 
 function intEnv(name: string, fallback: number): number {
@@ -42,12 +34,6 @@ function intEnv(name: string, fallback: number): number {
   if (raw === undefined || raw.trim() === "") return fallback;
   const parsed = Number.parseInt(raw, 10);
   return Number.isNaN(parsed) ? fallback : parsed;
-}
-
-function boolEnv(name: string, fallback: boolean): boolean {
-  const raw = process.env[name];
-  if (raw === undefined) return fallback;
-  return ["true", "1", "yes", "on"].includes(raw.toLowerCase());
 }
 
 function listEnv(name: string): string[] | undefined {
@@ -68,11 +54,6 @@ export function loadConfig(overrides: CliOverrides = {}): Config {
   const projectId = overrides.projectId ?? process.env.GCP_PROJECT_ID ?? "";
   const location = overrides.location ?? process.env.BIGQUERY_LOCATION ?? "";
 
-  const distanceRaw = (process.env.BIGQUERY_DISTANCE_TYPE ?? DEFAULTS.distanceType).toUpperCase();
-  const distanceType = (["COSINE", "EUCLIDEAN", "DOT_PRODUCT"].includes(distanceRaw)
-    ? distanceRaw
-    : DEFAULTS.distanceType) as Config["distanceType"];
-
   return {
     projectId,
     location,
@@ -91,12 +72,5 @@ export function loadConfig(overrides: CliOverrides = {}): Config {
       DEFAULTS.maxRecommendedResults,
     ),
     maxBytesBilled: intEnv("BIGQUERY_MAX_BYTES_BILLED", DEFAULTS.maxBytesBilled),
-
-    vectorSearchEnabled: boolEnv("BIGQUERY_VECTOR_SEARCH_ENABLED", true),
-    embeddingModel: process.env.BIGQUERY_EMBEDDING_MODEL,
-    embeddingColumnContains:
-      process.env.BIGQUERY_EMBEDDING_COLUMN_CONTAINS ?? DEFAULTS.embeddingColumnContains,
-    embeddingTables: listEnv("BIGQUERY_EMBEDDING_TABLES"),
-    distanceType,
   };
 }

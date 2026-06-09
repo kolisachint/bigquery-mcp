@@ -33,13 +33,4 @@ export const handlers: Record<string, ToolHandler> = {
 
   get_table_info: (s, a) =>
     s.getTable({ dataset_id: a.dataset_id as string, table_id: a.table_id as string }),
-
-  vector_search: (s, a) =>
-    s.vectorSearch({
-      query_text: a.query_text as string | undefined,
-      table_path: a.table_path as string | undefined,
-      top_k: a.top_k as string | undefined,
-      select_columns: a.select_columns as string | undefined,
-      embedding_column: a.embedding_column as string | undefined,
-    }),
 };

@@ -62,10 +62,14 @@ build-backend = "hatchling.build"
 packages = ["src/bigquery_mcp"]
 
 # Ship the canonical contract inside the package as bigquery_mcp/contract.json,
-# and the cost-first querying agent skill under bigquery_mcp/skills/.
+# and the agent skills + agent definitions under bigquery_mcp/skills/ and
+# bigquery_mcp/agents/.
 [tool.hatch.build.targets.wheel.force-include]
 "contract/tools.json" = "bigquery_mcp/contract.json"
 ".agents/skills/bigquery-cost-first-querying/SKILL.md" = "bigquery_mcp/skills/bigquery-cost-first-querying/SKILL.md"
+".agents/skills/secure-context-reducer/SKILL.md" = "bigquery_mcp/skills/secure-context-reducer/SKILL.md"
+".agents/agents/bigquery-table-analyst.md" = "bigquery_mcp/agents/bigquery-table-analyst.md"
+".agents/agents/cost-first-compliant-agent.md" = "bigquery_mcp/agents/cost-first-compliant-agent.md"
 
 [tool.mypy]
 files = ["src"]
@@ -79,6 +83,8 @@ show_error_codes = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Async tests opt in explicitly via @pytest.mark.asyncio (pytest-asyncio strict mode).
+asyncio_mode = "strict"
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')"
 ]

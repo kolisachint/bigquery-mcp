@@ -8,7 +8,6 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { BigQueryService } from "../bigquery.js";
 import { ToolError } from "../bigquery.js";
-import type { Config } from "../config.js";
 import { buildInputShape, tools } from "../contract.js";
 import { type ToolArgs, handlers } from "./handlers.js";
 
@@ -22,16 +21,8 @@ function jsonResult(payload: unknown, isError = false): ToolResult {
   return { content: [{ type: "text", text: JSON.stringify(payload, null, 2) }], isError };
 }
 
-/** Tools that are only registered when their feature is enabled. */
-function isToolEnabled(name: string, config: Config): boolean {
-  if (name === "vector_search") return config.vectorSearchEnabled;
-  return true;
-}
-
-export function registerTools(server: McpServer, service: BigQueryService, config: Config): void {
+export function registerTools(server: McpServer, service: BigQueryService): void {
   for (const spec of tools) {
-    if (!isToolEnabled(spec.name, config)) continue;
-
     const handler = handlers[spec.name];
     if (!handler) {
       throw new Error(`No handler implemented for contract tool '${spec.name}'`);

@@ -1,5 +1,7 @@
-version: '3.8'
-
+# NOTE: this server speaks MCP over stdio. It is meant to be launched by an MCP
+# client that attaches to stdin/stdout (e.g. `docker compose run`), not run as a
+# detached long-lived service. The `restart`/`network_mode` settings below only
+# make sense if you front it with a stdio<->transport bridge.
 services:
   bigquery-mcp:
     build: ..
@@ -14,9 +16,12 @@ services:
       # - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/key.json
 
       # Optional: Override default configuration
-      # - BIGQUERY_MAX_RESULTS=50
       # - BIGQUERY_LIST_MAX_RESULTS=1000
+      # - BIGQUERY_LIST_MAX_RESULTS_DETAILED=50
       # - BIGQUERY_SAMPLE_ROWS=5
+      # - BIGQUERY_SAMPLE_ROWS_FOR_STATS=1000
+      # - BIGQUERY_MAX_BYTES_BILLED=109951162777
+      # - BIGQUERY_ALLOWED_DATASETS=analytics,reporting
 
     # Mount service account key if using one
     # volumes:

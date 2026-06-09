@@ -15,7 +15,7 @@
     "node": ">=18"
   },
   "scripts": {
-    "build": "bun build ./src/index.ts --outdir dist --target node && bun run scripts/copy-skill.ts",
+    "build": "bun build ./src/index.ts --outdir dist --target node && bun run scripts/copy-agent-assets.ts",
     "clean": "rm -rf dist",
     "start": "bun ./src/index.ts",
     "typecheck": "tsc --noEmit",
